@@ -56,6 +56,7 @@ const Reports: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDetails, setInvoiceDetails] = useState<Invoice | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
