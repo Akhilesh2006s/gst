@@ -56,7 +56,6 @@ const Reports: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDetails, setInvoiceDetails] = useState<Invoice | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
@@ -805,7 +804,6 @@ const Reports: React.FC = () => {
   };
 
   const handleInvoiceClick = async (invoice: Invoice) => {
-    setSelectedInvoice(invoice);
     setShowInvoiceModal(true);
     setLoadingInvoice(true);
     
@@ -2042,7 +2040,6 @@ const Reports: React.FC = () => {
               <button
                 onClick={() => {
                   setShowInvoiceModal(false);
-                  setSelectedInvoice(null);
                   setInvoiceDetails(null);
                 }}
                 className="text-gray-400 hover:text-gray-600"
@@ -2189,7 +2186,6 @@ const Reports: React.FC = () => {
                   <button
                     onClick={() => {
                       setShowInvoiceModal(false);
-                      setSelectedInvoice(null);
                       setInvoiceDetails(null);
                     }}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
