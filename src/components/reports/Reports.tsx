@@ -56,7 +56,6 @@ const Reports: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDetails, setInvoiceDetails] = useState<Invoice | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
@@ -726,7 +725,7 @@ const Reports: React.FC = () => {
         // Sales export
         csvRows.push(['Serial Number', 'Date', 'Total Amount', 'Party Name', 'Party Shipping Details']);
         
-        invoices.forEach((invoice, index) => {
+        invoices.forEach((invoice) => {
           const customer = customers.find(c => c.id === invoice.customer_id);
           const shippingDetails = customer?.shipping_address || invoice.shipping_address || invoice.customer_name || '';
           
@@ -1164,7 +1163,7 @@ const Reports: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        invoices.map((invoice, index) => {
+                        invoices.map((invoice) => {
                           const customer = customers.find(c => c.id === invoice.customer_id);
                           const shippingDetails = customer?.shipping_address || invoice.shipping_address || '';
                           

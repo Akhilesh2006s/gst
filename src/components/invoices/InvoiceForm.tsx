@@ -41,7 +41,6 @@ const InvoiceForm: React.FC = () => {
 
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [productSearch, setProductSearch] = useState('');
