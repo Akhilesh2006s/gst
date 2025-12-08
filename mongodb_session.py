@@ -38,7 +38,8 @@ class MongoDBSessionInterface(SessionInterface):
     
     def open_session(self, app, request):
         """Load session from MongoDB"""
-        sid = request.cookies.get(app.session_cookie_name)
+        cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
+        sid = request.cookies.get(cookie_name)
         if not sid:
             sid = self._generate_sid()
             return MongoDBSession(sid=sid, permanent=True)
@@ -69,6 +70,7 @@ class MongoDBSessionInterface(SessionInterface):
         """Save session to MongoDB"""
         domain = self.get_cookie_domain(app)
         path = self.get_cookie_path(app)
+        cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
         
         # If session is empty or should be deleted, remove it
         if not session or (hasattr(session, 'sid') and not session):
@@ -79,7 +81,7 @@ class MongoDBSessionInterface(SessionInterface):
                 except Exception as e:
                     print(f"Error deleting session: {e}")
             response.delete_cookie(
-                app.session_cookie_name,
+                cookie_name,
                 domain=domain,
                 path=path
             )
@@ -114,7 +116,7 @@ class MongoDBSessionInterface(SessionInterface):
             
             # Set cookie with session ID
             response.set_cookie(
-                app.session_cookie_name,
+                cookie_name,
                 sid,
                 expires=expires,
                 httponly=self.get_cookie_httponly(app),
