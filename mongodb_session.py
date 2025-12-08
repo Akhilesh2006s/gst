@@ -41,7 +41,7 @@ class MongoDBSessionInterface(SessionInterface):
         sid = request.cookies.get(app.session_cookie_name)
         if not sid:
             sid = self._generate_sid()
-            return MongoDBSession(sid=sid, permanent=self.permanent)
+            return MongoDBSession(sid=sid, permanent=True)
         
         # Remove key prefix if present
         if sid.startswith(self.key_prefix):
@@ -57,10 +57,10 @@ class MongoDBSessionInterface(SessionInterface):
             if session_doc:
                 # Unpickle session data
                 data = pickle.loads(session_doc['data'])
-                return MongoDBSession(data, sid=sid, permanent=self.permanent)
+                return MongoDBSession(data, sid=sid, permanent=True)
             else:
                 # Session expired or not found
-                return MongoDBSession(sid=sid, permanent=self.permanent)
+                return MongoDBSession(sid=sid, permanent=True)
         except Exception as e:
             print(f"Error loading session from MongoDB: {e}")
             return MongoDBSession(sid=sid, permanent=self.permanent)
@@ -86,7 +86,7 @@ class MongoDBSessionInterface(SessionInterface):
             return
         
         # Calculate expiration
-        if self.permanent:
+        if getattr(session, 'permanent', True):
             expires = datetime.now(timezone.utc) + app.permanent_session_lifetime
         else:
             expires = datetime.now(timezone.utc) + timedelta(days=1)
