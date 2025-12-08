@@ -1,6 +1,5 @@
 from flask import Flask, render_template, send_from_directory, jsonify, request, send_file, make_response
 from flask_cors import CORS
-from flask_session import Session
 import os
 from config import config
 from database import init_app as init_db, get_db
