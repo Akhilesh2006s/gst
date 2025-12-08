@@ -53,20 +53,16 @@ def login():
                 }
             })
             
-            # Explicitly set session cookie attributes for cross-origin
+            # Explicitly ensure session is saved and cookie is set
             from flask import current_app
-            from datetime import datetime, timedelta
+            from datetime import timedelta
             
-            # Set cookie with explicit attributes
-            response.set_cookie(
-                'session',
-                value=session.get('_id', ''),
-                max_age=timedelta(days=7).total_seconds(),
-                secure=current_app.config.get('SESSION_COOKIE_SECURE', True),
-                httponly=current_app.config.get('SESSION_COOKIE_HTTPONLY', True),
-                samesite=current_app.config.get('SESSION_COOKIE_SAMESITE', 'None'),
-                domain=None  # Don't set domain for cross-origin
-            )
+            # Flask should set the session cookie automatically, but let's ensure it's configured
+            # The session cookie will be set by Flask's session interface
+            # Log session info for debugging
+            print(f"Login successful for user: {user.email}")
+            print(f"Session ID: {session.get('_id', 'No session ID')}")
+            print(f"Session cookie config - Secure: {current_app.config.get('SESSION_COOKIE_SECURE')}, SameSite: {current_app.config.get('SESSION_COOKIE_SAMESITE')}")
             
             return response
         else:
@@ -235,9 +231,17 @@ def profile():
 def check_auth():
     """Check if user is authenticated and return user type"""
     try:
+        # Debug: Log session and user info
+        from flask import session as flask_session
+        print(f"Auth check - Session keys: {list(flask_session.keys())}")
+        print(f"Auth check - Current user type: {type(current_user)}")
+        print(f"Auth check - Current user ID: {getattr(current_user, 'id', None)}")
+        print(f"Auth check - Is authenticated attr: {hasattr(current_user, 'is_authenticated')}")
+        
         # Check if user is authenticated - this should work even if session is just created
         # Use getattr to safely check authentication status
         is_authenticated = getattr(current_user, 'is_authenticated', False) if hasattr(current_user, 'is_authenticated') else False
+        print(f"Auth check - Is authenticated: {is_authenticated}")
         
         if is_authenticated:
             # Determine user type by checking model attributes
