@@ -31,15 +31,10 @@ def create_app(config_name='development'):
     app = Flask(__name__, static_folder='frontend/dist', template_folder='frontend/dist')
     app.config.from_object(config[config_name])
     
-    # Configure Flask-Session to use MongoDB instead of cookies
-    # This avoids cross-origin cookie issues
-    app.config['SESSION_TYPE'] = 'mongodb'
-    app.config['SESSION_MONGODB'] = None  # Will be set after DB init
-    app.config['SESSION_MONGODB_DB'] = 'GST-1'  # Database name
-    app.config['SESSION_MONGODB_COLLECT'] = 'sessions'  # Collection name
+    # Configure session to use MongoDB instead of cookies
+    # This avoids cross-origin cookie issues - only session ID stored in cookie
     app.config['SESSION_PERMANENT'] = True
-    app.config['SESSION_USE_SIGNER'] = True  # Sign session IDs for security
-    app.config['SESSION_KEY_PREFIX'] = 'session:'
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     
     # Session cookie configuration (only stores session ID, not data)
     app.config['SESSION_COOKIE_NAME'] = 'session_id'
@@ -110,27 +105,28 @@ def create_app(config_name='development'):
     # Initialize MongoDB connection
     try:
         from database import init_app as init_db, get_db
+        from datetime import timedelta
         db = init_db(app)
-        # Set MongoDB for Flask-Session
-        app.config['SESSION_MONGODB'] = get_db()
-        print("MongoDB initialized for Flask-Session")
+        print("MongoDB initialized")
+        
+        # Set up custom MongoDB session interface
+        from mongodb_session import MongoDBSessionInterface
+        app.session_interface = MongoDBSessionInterface(
+            db=get_db(),
+            collection='sessions',
+            key_prefix='session:'
+        )
+        print("MongoDB session interface initialized - sessions stored in MongoDB")
     except Exception as e:
         # Log error but don't fail app startup - health check should still work
         import logging
+        import traceback
         logging.warning(f"MongoDB initialization warning: {e}")
         # Print to stdout for container logs
         print(f"WARNING: MongoDB initialization issue (app will continue): {e}")
-    
-    # Initialize Flask-Session with MongoDB backend
-    try:
-        Session(app)
-        print("Flask-Session initialized with MongoDB backend")
-    except Exception as e:
-        print(f"WARNING: Flask-Session initialization failed: {e}")
-        # Fall back to default cookie sessions if MongoDB session fails
-        app.config['SESSION_TYPE'] = 'filesystem'
-        Session(app)
-        print("Falling back to filesystem sessions")
+        traceback.print_exc()
+        # Fall back to default Flask sessions if MongoDB fails
+        print("Falling back to default Flask cookie sessions")
     
     # Initialize login manager
     login_manager = LoginManager()
