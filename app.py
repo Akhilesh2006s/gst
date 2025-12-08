@@ -41,18 +41,29 @@ def create_app(config_name='development'):
     elif not isinstance(cors_origins, list):
         cors_origins = ['http://localhost:3000', 'http://localhost:5173']
     
+    # Always include Vercel frontend URLs (critical for deployment)
+    vercel_origins = [
+        'https://gst-sable.vercel.app',
+        'https://gst-frontend-bay.vercel.app'
+    ]
+    
+    # Merge and deduplicate origins
+    all_origins = list(set(cors_origins + vercel_origins))
+    
     # In production, use configured origins; in development, allow all
     is_production = app.config.get('FLASK_ENV') == 'production'
-    allowed_origins = cors_origins if is_production else "*"
     
     # Log CORS configuration for debugging
     print(f"CORS Configuration:")
     print(f"  Environment: {app.config.get('FLASK_ENV', 'unknown')}")
     print(f"  Is Production: {is_production}")
-    print(f"  Allowed Origins: {allowed_origins}")
     print(f"  CORS_ORIGINS from config: {cors_origins}")
+    print(f"  All allowed origins: {all_origins}")
     
-    # Enable CORS for all routes (more permissive for API)
+    # Enable CORS - use wildcard in development, specific origins in production
+    # But always allow Vercel origins
+    allowed_origins = all_origins if is_production else "*"
+    
     CORS(app, 
          resources={
              r"/api/*": {
@@ -102,9 +113,10 @@ def create_app(config_name='development'):
         customer = Customer.find_by_id(user_id)
         return customer
     
-    # Handle CORS preflight requests globally
+    # Handle CORS preflight requests globally - MUST run first
     @app.before_request
     def handle_cors_preflight():
+        # Always handle OPTIONS requests first
         if request.method == 'OPTIONS':
             response = make_response('', 200)
             origin = request.headers.get('Origin')
@@ -117,39 +129,61 @@ def create_app(config_name='development'):
                 elif not isinstance(cors_origins, list):
                     cors_origins = []
                 
+                # Always allow Vercel origins
+                vercel_origins = [
+                    'https://gst-sable.vercel.app',
+                    'https://gst-frontend-bay.vercel.app'
+                ]
+                all_allowed = list(set(cors_origins + vercel_origins))
+                
                 is_production = app.config.get('FLASK_ENV') == 'production'
                 
-                # Allow if in development or if origin is in allowed list
-                if not is_production or origin in cors_origins:
+                # Allow if in development, if origin is in allowed list, or if it's a Vercel domain
+                is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
+                if not is_production or origin in all_allowed or is_vercel:
                     response.headers.add('Access-Control-Allow-Origin', origin)
                     response.headers.add('Access-Control-Allow-Credentials', 'true')
                     response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
                     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, Accept, X-Requested-With')
                     response.headers.add('Access-Control-Max-Age', '86400')
+                    print(f"CORS preflight allowed for origin: {origin}")
                 else:
-                    print(f"CORS preflight blocked: Origin {origin} not in allowed list: {cors_origins}")
+                    print(f"CORS preflight blocked: Origin {origin} not in allowed list: {all_allowed}")
             
             return response
     
-    # Add CORS headers to all responses
+    # Add CORS headers to all responses - ensures headers are always present
     @app.after_request
     def after_request(response):
         origin = request.headers.get('Origin')
         if origin:
+            # Get allowed origins
             cors_origins = app.config.get('CORS_ORIGINS', [])
             if isinstance(cors_origins, str):
                 cors_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
             elif not isinstance(cors_origins, list):
                 cors_origins = []
             
-            is_production = app.config.get('FLASK_ENV') == 'production'
+            # Always allow Vercel origins
+            vercel_origins = [
+                'https://gst-sable.vercel.app',
+                'https://gst-frontend-bay.vercel.app'
+            ]
+            all_allowed = list(set(cors_origins + vercel_origins))
             
-            # Add CORS headers if origin is allowed
-            if not is_production or origin in cors_origins:
+            is_production = app.config.get('FLASK_ENV') == 'production'
+            is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
+            
+            # Add CORS headers if origin is allowed or if it's Vercel
+            if not is_production or origin in all_allowed or is_vercel:
                 if 'Access-Control-Allow-Origin' not in response.headers:
                     response.headers.add('Access-Control-Allow-Origin', origin)
                 if 'Access-Control-Allow-Credentials' not in response.headers:
                     response.headers.add('Access-Control-Allow-Credentials', 'true')
+                if 'Access-Control-Allow-Methods' not in response.headers:
+                    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
+                if 'Access-Control-Allow-Headers' not in response.headers:
+                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, Accept, X-Requested-With')
         
         return response
 
@@ -158,6 +192,16 @@ def create_app(config_name='development'):
     def health():
         """Health check endpoint for Railway/deployment"""
         return jsonify({'status': 'healthy', 'message': 'GST Billing System API is running'}), 200
+    
+    # CORS test endpoint
+    @app.route('/api/cors-test', methods=['GET', 'OPTIONS'])
+    def cors_test():
+        """Test endpoint to verify CORS is working"""
+        return jsonify({
+            'status': 'success',
+            'message': 'CORS is working correctly',
+            'origin': request.headers.get('Origin', 'No origin header')
+        }), 200
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
