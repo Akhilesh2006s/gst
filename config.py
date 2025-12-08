@@ -13,8 +13,10 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = True
     # Use None to allow cross-origin cookies (required for hosted frontend)
+    # Flask accepts 'None' as a string for SameSite=None
     SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'None')
     SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN')
+    SESSION_COOKIE_PATH = '/'
     
     # Port configuration for Railway
     PORT = int(os.environ.get('PORT', 5000))

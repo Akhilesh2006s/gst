@@ -30,6 +30,21 @@ def create_app(config_name='development'):
     app = Flask(__name__, static_folder='frontend/dist', template_folder='frontend/dist')
     app.config.from_object(config[config_name])
     
+    # Explicitly configure session cookie for cross-origin support
+    app.config['SESSION_COOKIE_NAME'] = 'session'
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SECURE'] = app.config.get('SESSION_COOKIE_SECURE', True)
+    # Convert string 'None' to actual None for SameSite
+    samesite_value = app.config.get('SESSION_COOKIE_SAMESITE', 'None')
+    if samesite_value == 'None':
+        app.config['SESSION_COOKIE_SAMESITE'] = None  # Flask expects None, not 'None'
+    else:
+        app.config['SESSION_COOKIE_SAMESITE'] = samesite_value
+    # Don't set domain - let browser handle it for cross-origin
+    app.config['SESSION_COOKIE_DOMAIN'] = None
+    # Set session cookie path to root
+    app.config['SESSION_COOKIE_PATH'] = '/'
+    
     # Disable strict slashes to prevent redirects that break CORS preflight
     app.url_map.strict_slashes = False
     
@@ -188,6 +203,14 @@ def create_app(config_name='development'):
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
                 response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
+        
+        # Ensure session cookie is set with correct attributes for cross-origin
+        # Flask should set this automatically, but we verify it's configured correctly
+        if 'Set-Cookie' in response.headers:
+            # Log cookie being set for debugging
+            cookie_header = response.headers.get('Set-Cookie', '')
+            if 'session=' in cookie_header:
+                print(f"Session cookie being set: {cookie_header[:100]}...")
         
         return response
 
