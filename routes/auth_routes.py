@@ -41,7 +41,8 @@ def login():
             # Ensure ID is a string (convert ObjectId if needed)
             user_id = str(user.id) if user.id else None
             
-            return jsonify({
+            # Create response with user data
+            response = jsonify({
                 'success': True,
                 'message': 'Login successful!',
                 'user': {
@@ -51,6 +52,23 @@ def login():
                     'business_name': user.business_name
                 }
             })
+            
+            # Explicitly set session cookie attributes for cross-origin
+            from flask import current_app
+            from datetime import datetime, timedelta
+            
+            # Set cookie with explicit attributes
+            response.set_cookie(
+                'session',
+                value=session.get('_id', ''),
+                max_age=timedelta(days=7).total_seconds(),
+                secure=current_app.config.get('SESSION_COOKIE_SECURE', True),
+                httponly=current_app.config.get('SESSION_COOKIE_HTTPONLY', True),
+                samesite=current_app.config.get('SESSION_COOKIE_SAMESITE', 'None'),
+                domain=None  # Don't set domain for cross-origin
+            )
+            
+            return response
         else:
             return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
             
