@@ -202,7 +202,8 @@ def create_app(config_name='development'):
                 response.headers['Access-Control-Allow-Credentials'] = 'true'
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
-                response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
+                # Expose Set-Cookie header so frontend can see it (though browser handles it automatically)
+                response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
         
         # Ensure session cookie is set with correct attributes for cross-origin
         # Flask should set this automatically, but we verify it's configured correctly

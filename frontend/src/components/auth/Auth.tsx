@@ -59,6 +59,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         credentials: 'include'
       });
 
+      // Debug: Check response headers for Set-Cookie
+      console.log('Login response headers:', {
+        'set-cookie': response.headers.get('Set-Cookie'),
+        'access-control-allow-credentials': response.headers.get('Access-Control-Allow-Credentials'),
+        'access-control-allow-origin': response.headers.get('Access-Control-Allow-Origin'),
+        'status': response.status,
+        'statusText': response.statusText
+      });
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Login failed' }));
         setError(errorData.message || `Login failed with status ${response.status}`);
@@ -67,6 +76,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
 
       const data = await response.json();
+      console.log('Login response data:', data);
 
       if (data.success) {
         setSuccess(data.message || 'Login successful!');
@@ -87,6 +97,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               headers: {
                 'Content-Type': 'application/json'
               }
+            });
+            
+            // Debug: Check if cookies are being sent
+            console.log(`Verification attempt ${attempt + 1} - Response status:`, verifyResponse.status);
+            console.log(`Verification attempt ${attempt + 1} - Response headers:`, {
+              'set-cookie': verifyResponse.headers.get('Set-Cookie'),
+              'access-control-allow-credentials': verifyResponse.headers.get('Access-Control-Allow-Credentials')
             });
             
             const verifyData = await verifyResponse.json().catch(() => ({ authenticated: false }));
