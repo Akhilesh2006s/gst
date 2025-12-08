@@ -3,6 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 from models import User
 from forms import LoginForm, RegistrationForm, ProfileForm
+from datetime import datetime
 import re
 
 auth_bp = Blueprint('auth', __name__)
@@ -33,9 +34,17 @@ def login():
                 user.is_approved = True
                 user.save()
             
+            # Login user - Flask-Login will store user ID in session
             login_user(user, remember=data.get('remember_me', False))
+            
+            # Make session permanent
             session.permanent = True
-            # Force session to be saved immediately
+            
+            # CRITICAL: Write to session to force Flask to save it and set cookie
+            # Flask only sets the cookie if session is modified
+            # We need to actually modify the session, not just set modified=True
+            session['_login_time'] = str(datetime.now())
+            session['user_id'] = str(user.id)  # Store user ID explicitly
             session.modified = True
             
             # Ensure ID is a string (convert ObjectId if needed)
@@ -53,37 +62,22 @@ def login():
                 }
             })
             
-            # Explicitly ensure session is saved and cookie is set
-            from flask import current_app
-            from datetime import timedelta
-            
             # Log session info for debugging
+            from flask import current_app
             print(f"Login successful for user: {user.email}")
-            print(f"Session keys: {list(session.keys())}")
-            print(f"Session cookie config - Secure: {current_app.config.get('SESSION_COOKIE_SECURE')}, SameSite: {current_app.config.get('SESSION_COOKIE_SAMESITE')}")
-            print(f"Session cookie name: {current_app.config.get('SESSION_COOKIE_NAME')}")
+            print(f"Session keys after login: {list(session.keys())}")
+            print(f"Session modified flag: {session.modified}")
+            print(f"Session permanent: {session.permanent}")
+            print(f"Session cookie config:")
+            print(f"  - Name: {current_app.config.get('SESSION_COOKIE_NAME')}")
+            print(f"  - Secure: {current_app.config.get('SESSION_COOKIE_SECURE')}")
+            print(f"  - SameSite: {current_app.config.get('SESSION_COOKIE_SAMESITE')}")
+            print(f"  - HttpOnly: {current_app.config.get('SESSION_COOKIE_HTTPONLY')}")
+            print(f"  - Path: {current_app.config.get('SESSION_COOKIE_PATH')}")
+            print(f"  - Domain: {current_app.config.get('SESSION_COOKIE_DOMAIN')}")
             
-            # CRITICAL: Ensure session is saved by accessing it
-            # Flask-Login stores user_id in session['_user_id'] or session['_id']
-            # We need to ensure the session is actually saved
-            try:
-                # Force session save by accessing session interface
-                from flask.sessions import SecureCookieSessionInterface
-                session_interface = current_app.session_interface
-                if session_interface:
-                    # The session should be saved automatically, but let's verify
-                    # by checking if Flask-Login stored the user ID
-                    flask_login_id = session.get('_user_id') or session.get('_id')
-                    print(f"Flask-Login session ID stored: {flask_login_id}")
-                    
-                    # Explicitly save session by calling save_session
-                    # This ensures the cookie is set
-                    session_interface.save_session(current_app, session, response)
-                    print("Session explicitly saved via session interface")
-            except Exception as e:
-                print(f"Error saving session: {e}")
-                import traceback
-                traceback.print_exc()
+            # Flask should automatically set the cookie when session is modified
+            # The after_request hook will add CORS headers
             
             return response
         else:
