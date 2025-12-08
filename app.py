@@ -105,7 +105,6 @@ def create_app(config_name='development'):
     # Initialize MongoDB connection
     try:
         from database import init_app as init_db, get_db
-        from datetime import timedelta
         db = init_db(app)
         print("MongoDB initialized")
         
