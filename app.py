@@ -138,14 +138,17 @@ def create_app(config_name='development'):
                 
                 is_production = app.config.get('FLASK_ENV') == 'production'
                 
-                # Allow if in development, if origin is in allowed list, or if it's a Vercel domain
+                # ALWAYS allow Vercel origins, or if in development, or if in allowed list
                 is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
-                if not is_production or origin in all_allowed or is_vercel:
-                    response.headers.add('Access-Control-Allow-Origin', origin)
-                    response.headers.add('Access-Control-Allow-Credentials', 'true')
-                    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
-                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, Accept, X-Requested-With')
-                    response.headers.add('Access-Control-Max-Age', '86400')
+                should_allow = not is_production or origin in all_allowed or is_vercel
+                
+                if should_allow:
+                    # Use direct assignment to ensure headers are set
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
+                    response.headers['Access-Control-Max-Age'] = '86400'
                     print(f"CORS preflight allowed for origin: {origin}")
                 else:
                     print(f"CORS preflight blocked: Origin {origin} not in allowed list: {all_allowed}")
@@ -157,33 +160,34 @@ def create_app(config_name='development'):
     def after_request(response):
         origin = request.headers.get('Origin')
         if origin:
-            # Get allowed origins
+            # Always allow Vercel origins (critical for deployment)
+            vercel_origins = [
+                'https://gst-sable.vercel.app',
+                'https://gst-frontend-bay.vercel.app'
+            ]
+            is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
+            
+            # Get allowed origins from config
             cors_origins = app.config.get('CORS_ORIGINS', [])
             if isinstance(cors_origins, str):
                 cors_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
             elif not isinstance(cors_origins, list):
                 cors_origins = []
             
-            # Always allow Vercel origins
-            vercel_origins = [
-                'https://gst-sable.vercel.app',
-                'https://gst-frontend-bay.vercel.app'
-            ]
             all_allowed = list(set(cors_origins + vercel_origins))
             
             is_production = app.config.get('FLASK_ENV') == 'production'
-            is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
             
-            # Add CORS headers if origin is allowed or if it's Vercel
-            if not is_production or origin in all_allowed or is_vercel:
-                if 'Access-Control-Allow-Origin' not in response.headers:
-                    response.headers.add('Access-Control-Allow-Origin', origin)
-                if 'Access-Control-Allow-Credentials' not in response.headers:
-                    response.headers.add('Access-Control-Allow-Credentials', 'true')
-                if 'Access-Control-Allow-Methods' not in response.headers:
-                    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
-                if 'Access-Control-Allow-Headers' not in response.headers:
-                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, Accept, X-Requested-With')
+            # ALWAYS allow Vercel origins, or if in development, or if in allowed list
+            should_allow = not is_production or origin in all_allowed or is_vercel
+            
+            if should_allow:
+                # Always set CORS headers (override any existing ones)
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
+                response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
         
         return response
 
