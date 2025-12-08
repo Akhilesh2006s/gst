@@ -57,12 +57,33 @@ def login():
             from flask import current_app
             from datetime import timedelta
             
-            # Flask should set the session cookie automatically, but let's ensure it's configured
-            # The session cookie will be set by Flask's session interface
             # Log session info for debugging
             print(f"Login successful for user: {user.email}")
-            print(f"Session ID: {session.get('_id', 'No session ID')}")
+            print(f"Session keys: {list(session.keys())}")
             print(f"Session cookie config - Secure: {current_app.config.get('SESSION_COOKIE_SECURE')}, SameSite: {current_app.config.get('SESSION_COOKIE_SAMESITE')}")
+            print(f"Session cookie name: {current_app.config.get('SESSION_COOKIE_NAME')}")
+            
+            # CRITICAL: Ensure session is saved by accessing it
+            # Flask-Login stores user_id in session['_user_id'] or session['_id']
+            # We need to ensure the session is actually saved
+            try:
+                # Force session save by accessing session interface
+                from flask.sessions import SecureCookieSessionInterface
+                session_interface = current_app.session_interface
+                if session_interface:
+                    # The session should be saved automatically, but let's verify
+                    # by checking if Flask-Login stored the user ID
+                    flask_login_id = session.get('_user_id') or session.get('_id')
+                    print(f"Flask-Login session ID stored: {flask_login_id}")
+                    
+                    # Explicitly save session by calling save_session
+                    # This ensures the cookie is set
+                    session_interface.save_session(current_app, session, response)
+                    print("Session explicitly saved via session interface")
+            except Exception as e:
+                print(f"Error saving session: {e}")
+                import traceback
+                traceback.print_exc()
             
             return response
         else:
