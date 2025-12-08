@@ -51,7 +51,6 @@ const Sales: React.FC = () => {
   const [dateFilter, setDateFilter] = useState('this_month');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showActionsMenu, setShowActionsMenu] = useState<number | null>(null);
   const [showCreateSaleModal, setShowCreateSaleModal] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -263,10 +262,6 @@ const Sales: React.FC = () => {
         const totalCancelled = filteredForSummary
           .filter((inv: Invoice) => inv.status.toLowerCase() === 'cancelled')
           .reduce((sum: number, inv: Invoice) => sum + inv.total_amount, 0);
-        const totalDone = filteredForSummary
-          .filter((inv: Invoice) => inv.status.toLowerCase() === 'done')
-          .reduce((sum: number, inv: Invoice) => sum + inv.total_amount, 0);
-        
         setSummary({
           total_sales: totalSales,
           total_paid: totalPaid,
@@ -996,6 +991,7 @@ const Sales: React.FC = () => {
                   paginatedInvoices.map((invoice) => {
                     // Ensure invoice has a valid ID for key and actions
                     const invoiceKey = invoice.id || invoice.invoice_number || `invoice-${Math.random()}`;
+                    const invoiceId = typeof invoice.id === 'number' ? invoice.id : null;
                     return (
                     <tr key={invoiceKey} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1032,14 +1028,14 @@ const Sales: React.FC = () => {
                         <div className="flex items-center justify-end space-x-2">
                           <div className="relative">
                             <button
-                              onClick={() => setShowActionsMenu(showActionsMenu === invoiceKey ? null : invoiceKey)}
+                              onClick={() => setShowActionsMenu(showActionsMenu === invoiceId ? null : invoiceId)}
                               className="text-gray-600 hover:text-gray-900 p-1 rounded hover:bg-gray-100 transition-colors"
                             >
                               <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                               </svg>
                             </button>
-                            {showActionsMenu === invoiceKey && (
+                            {showActionsMenu === invoiceId && (
                               <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
                                 <div className="py-1">
                                   <button
@@ -1303,7 +1299,7 @@ const Sales: React.FC = () => {
                           fetchProducts();
                         }
                       }}
-                      onBlur={(e) => {
+                      onBlur={() => {
                         // Delay hiding dropdown to allow click events
                         setTimeout(() => setShowProductDropdown(false), 200);
                       }}

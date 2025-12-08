@@ -18,12 +18,6 @@ interface InvoiceItem {
   total: number;
 }
 
-interface Customer {
-  id: string | number;
-  name: string;
-  email: string;
-  phone: string;
-}
 
 const InvoiceForm: React.FC = () => {
   const { id } = useParams();
@@ -41,7 +35,6 @@ const InvoiceForm: React.FC = () => {
 
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -50,7 +43,6 @@ const InvoiceForm: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
-    loadCustomers();
     if (isEditing && id) {
       loadInvoice(id);
     }
@@ -73,22 +65,6 @@ const InvoiceForm: React.FC = () => {
     }
   };
 
-  const loadCustomers = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/admin/customers`, {
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setCustomers(data.customers || []);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load customers:', error);
-    }
-  };
 
   const loadInvoice = async (invoiceId: string) => {
     try {

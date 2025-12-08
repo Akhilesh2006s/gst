@@ -35,13 +35,26 @@ def create_app(config_name='development'):
     
     # Enable CORS for API routes with credentials support
     cors_origins = app.config.get('CORS_ORIGINS', ['http://localhost:3000', 'http://localhost:5173'])
+    # Ensure cors_origins is a list
+    if isinstance(cors_origins, str):
+        cors_origins = [origin.strip() for origin in cors_origins.split(',')]
+    
+    # In production, use configured origins; in development, allow all
+    is_production = app.config.get('FLASK_ENV') == 'production'
+    allowed_origins = cors_origins if is_production else "*"
+    
+    # Log CORS configuration for debugging (only in production to avoid spam)
+    if is_production:
+        print(f"CORS configured for production with origins: {cors_origins}")
+    
     CORS(app, resources={
         r"/api/*": {
-            "origins": cors_origins if app.config.get('FLASK_ENV') == 'production' else "*",
+            "origins": allowed_origins,
             "supports_credentials": True,
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
             "allow_headers": ["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"],
-            "expose_headers": ["Content-Type", "Authorization"]
+            "expose_headers": ["Content-Type", "Authorization"],
+            "max_age": 86400  # Cache preflight requests for 24 hours
         }
     })
     
@@ -82,6 +95,19 @@ def create_app(config_name='development'):
     def handle_cors_preflight():
         if request.method == 'OPTIONS':
             response = make_response('', 200)
+            # Add CORS headers manually for OPTIONS requests
+            origin = request.headers.get('Origin')
+            if origin:
+                cors_origins = app.config.get('CORS_ORIGINS', [])
+                if isinstance(cors_origins, str):
+                    cors_origins = [o.strip() for o in cors_origins.split(',')]
+                is_production = app.config.get('FLASK_ENV') == 'production'
+                if not is_production or origin in cors_origins:
+                    response.headers.add('Access-Control-Allow-Origin', origin)
+                    response.headers.add('Access-Control-Allow-Credentials', 'true')
+                    response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH')
+                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, Origin, Accept, X-Requested-With')
+                    response.headers.add('Access-Control-Max-Age', '86400')
             return response
 
     # Health check endpoint - register early before catch-all routes

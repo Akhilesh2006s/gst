@@ -515,7 +515,7 @@ const CustomerDetail: React.FC = () => {
           )}
 
           {/* Pricing Tab */}
-          {activeTab === 'products' && (
+          {activeTab === 'pricing' && (
             <div className="backdrop-blur-xl bg-white/10 rounded-3xl shadow-2xl border border-white/20 p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-white">
