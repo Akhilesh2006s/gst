@@ -19,8 +19,7 @@ class MongoDBSession(CallbackDict, SessionMixin):
             self.modified = True
         CallbackDict.__init__(self, initial, on_update)
         self.sid = sid
-        if permanent:
-            self.permanent = permanent
+        self.permanent = permanent if permanent is not None else True
         self.modified = False
 
 
@@ -71,19 +70,19 @@ class MongoDBSessionInterface(SessionInterface):
         domain = self.get_cookie_domain(app)
         path = self.get_cookie_path(app)
         
-        # If session is empty, delete it
-        if not session:
-            if session.sid:
+        # If session is empty or should be deleted, remove it
+        if not session or (hasattr(session, 'sid') and not session):
+            sid = getattr(session, 'sid', None)
+            if sid:
                 try:
-                    self.db[self.collection].delete_one({'_id': session.sid})
+                    self.db[self.collection].delete_one({'_id': sid})
                 except Exception as e:
                     print(f"Error deleting session: {e}")
-            if session.modified:
-                response.delete_cookie(
-                    app.session_cookie_name,
-                    domain=domain,
-                    path=path
-                )
+            response.delete_cookie(
+                app.session_cookie_name,
+                domain=domain,
+                path=path
+            )
             return
         
         # Calculate expiration
