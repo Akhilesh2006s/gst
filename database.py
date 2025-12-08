@@ -68,3 +68,8 @@ def create_indexes(database):
     
     print("MongoDB indexes created successfully")
 
+def get_db():
+    """Get the MongoDB database instance"""
+    global db
+    return db
+
