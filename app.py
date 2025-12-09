@@ -86,35 +86,52 @@ def create_app(config_name='development'):
     @app.after_request
     def ensure_cors_headers(response):
         origin = request.headers.get('Origin')
+        path = request.path
+        
+        # Only process API routes
+        if not path.startswith('/api/'):
+            return response
         
         # Log what we received
-        has_origin_header = 'Access-Control-Allow-Origin' in response.headers
-        has_credentials_header = 'Access-Control-Allow-Credentials' in response.headers
+        has_origin_header_before = 'Access-Control-Allow-Origin' in response.headers
+        has_credentials_header_before = 'Access-Control-Allow-Credentials' in response.headers
+        origin_value_before = response.headers.get('Access-Control-Allow-Origin')
+        credentials_value_before = response.headers.get('Access-Control-Allow-Credentials')
         
-        print(f"[CORS FALLBACK] Origin: {origin}, Has-Origin-Header: {has_origin_header}, Has-Credentials: {has_credentials_header}")
+        print(f"[CORS FALLBACK] ========== CORS FALLBACK HOOK ==========")
+        print(f"[CORS FALLBACK] Path: {path}")
+        print(f"[CORS FALLBACK] Origin from request: {origin}")
+        print(f"[CORS FALLBACK] Before - Origin header: {origin_value_before}, Credentials: {credentials_value_before}")
         
-        # ALWAYS set headers if origin exists and headers are missing
+        # ALWAYS set headers if origin exists
         if origin:
             # Check if origin is allowed
             is_allowed = origin in allowed_origins or origin.endswith('.vercel.app')
             
             if is_allowed:
-                # FORCE set headers - override Flask-CORS if needed
+                # FORCE set headers - ALWAYS override, don't check if they exist
                 response.headers['Access-Control-Allow-Origin'] = origin
                 response.headers['Access-Control-Allow-Credentials'] = 'true'
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
                 response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
-                print(f"[CORS FALLBACK] ✅ FORCE-SET headers for origin: {origin}")
+                print(f"[CORS FALLBACK] ✅ FORCE-SET all headers for origin: {origin}")
             else:
-                print(f"[CORS FALLBACK] ⚠️ Origin not allowed: {origin}")
+                print(f"[CORS FALLBACK] ⚠️ Origin not in allowed list: {origin}")
+                # Still set headers anyway for debugging
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                print(f"[CORS FALLBACK] ⚠️ Set headers anyway for debugging")
         else:
             print(f"[CORS FALLBACK] ⚠️ No Origin header in request")
+            # Still set credentials even without origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS FALLBACK] ✅ Set credentials header (no origin)")
         
-        # ALWAYS ensure credentials header is set (even without origin)
+        # ALWAYS ensure credentials header is set (double-check)
         if 'Access-Control-Allow-Credentials' not in response.headers:
             response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS FALLBACK] ✅ Force-set Access-Control-Allow-Credentials")
+            print(f"[CORS FALLBACK] ✅ Force-set Access-Control-Allow-Credentials (was missing)")
         elif response.headers.get('Access-Control-Allow-Credentials') != 'true':
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             print(f"[CORS FALLBACK] ✅ Fixed Access-Control-Allow-Credentials (was: {response.headers.get('Access-Control-Allow-Credentials')})")
@@ -122,7 +139,8 @@ def create_app(config_name='development'):
         # Final verification
         final_origin = response.headers.get('Access-Control-Allow-Origin')
         final_credentials = response.headers.get('Access-Control-Allow-Credentials')
-        print(f"[CORS FALLBACK] Final headers - Origin: {final_origin}, Credentials: {final_credentials}")
+        print(f"[CORS FALLBACK] After - Origin: {final_origin}, Credentials: {final_credentials}")
+        print(f"[CORS FALLBACK] ========================================")
         
         return response
     
