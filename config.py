@@ -10,12 +10,13 @@ class Config:
     CORS_ORIGINS = [origin.strip() for origin in os.environ.get('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')]
     
     # Security settings
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
+    # CRITICAL: For cross-origin cookies (Vercel frontend + Railway backend)
+    SESSION_COOKIE_SECURE = True  # MUST be True for HTTPS (production)
     SESSION_COOKIE_HTTPONLY = True
-    # Use None to allow cross-origin cookies (required for hosted frontend)
-    # Flask accepts 'None' as a string for SameSite=None
+    # CRITICAL: SameSite=None is required for cross-origin cookies
+    # Flask-Session expects 'None' as a string, which gets converted to None when setting cookie
     SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'None')
-    SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN')
+    SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN')  # None for cross-origin
     SESSION_COOKIE_PATH = '/'
     
     # Port configuration for Railway

@@ -114,7 +114,19 @@ class MongoDBSessionInterface(SessionInterface):
                 upsert=True
             )
             
-            # Set cookie with session ID
+            # CRITICAL: Get SameSite value and ensure it's correct for cross-origin
+            samesite = self.get_cookie_samesite(app)
+            # Flask's get_cookie_samesite returns None, 'Lax', 'Strict', or 'None' as string
+            # For cross-origin cookies, we need 'None' (string) which Flask converts to None
+            if samesite is None:
+                # Check config directly - if it's set to 'None' string, use None
+                config_samesite = app.config.get('SESSION_COOKIE_SAMESITE')
+                if config_samesite == 'None' or config_samesite is None:
+                    samesite = None  # Flask will convert this to 'None' in Set-Cookie header
+                else:
+                    samesite = config_samesite
+            
+            # Set cookie with session ID - CRITICAL for cross-origin
             response.set_cookie(
                 cookie_name,
                 sid,
@@ -122,9 +134,12 @@ class MongoDBSessionInterface(SessionInterface):
                 httponly=self.get_cookie_httponly(app),
                 domain=domain,
                 path=path,
-                secure=self.get_cookie_secure(app),
-                samesite=self.get_cookie_samesite(app)
+                secure=True,  # MUST be True for cross-origin cookies
+                samesite=None  # None means SameSite=None for cross-origin
             )
+            
+            # Log cookie being set for debugging
+            print(f"Setting session cookie: name={cookie_name}, secure=True, samesite=None, domain={domain}, path={path}")
         except Exception as e:
             print(f"Error saving session to MongoDB: {e}")
             import traceback

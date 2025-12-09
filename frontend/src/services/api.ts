@@ -162,6 +162,7 @@ class ApiService {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
+      credentials: 'include',  // CRITICAL: Include credentials for session cookies
       body: formData,
     });
 

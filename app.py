@@ -37,19 +37,26 @@ def create_app(config_name='development'):
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     
     # Session cookie configuration (only stores session ID, not data)
+    # CRITICAL: For cross-origin cookies (Vercel frontend + Railway backend)
     app.config['SESSION_COOKIE_NAME'] = 'session_id'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SECURE'] = app.config.get('SESSION_COOKIE_SECURE', True)
-    # Convert string 'None' to actual None for SameSite
-    samesite_value = app.config.get('SESSION_COOKIE_SAMESITE', 'None')
-    if samesite_value == 'None':
-        app.config['SESSION_COOKIE_SAMESITE'] = None  # Flask expects None, not 'None'
-    else:
-        app.config['SESSION_COOKIE_SAMESITE'] = samesite_value
+    app.config['SESSION_COOKIE_SECURE'] = True  # MUST be True for HTTPS (production)
+    # CRITICAL: SameSite=None is required for cross-origin cookies
+    # Flask-Session uses 'None' string, but we need to ensure it's properly set
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # String 'None' for cross-origin
     # Don't set domain - let browser handle it for cross-origin
     app.config['SESSION_COOKIE_DOMAIN'] = None
     # Set session cookie path to root
     app.config['SESSION_COOKIE_PATH'] = '/'
+    
+    # Log cookie configuration for debugging
+    print(f"Session Cookie Configuration:")
+    print(f"  Name: {app.config['SESSION_COOKIE_NAME']}")
+    print(f"  Secure: {app.config['SESSION_COOKIE_SECURE']}")
+    print(f"  SameSite: {app.config['SESSION_COOKIE_SAMESITE']}")
+    print(f"  HttpOnly: {app.config['SESSION_COOKIE_HTTPONLY']}")
+    print(f"  Path: {app.config['SESSION_COOKIE_PATH']}")
+    print(f"  Domain: {app.config['SESSION_COOKIE_DOMAIN']}")
     
     # Disable strict slashes to prevent redirects that break CORS preflight
     app.url_map.strict_slashes = False
@@ -63,6 +70,7 @@ def create_app(config_name='development'):
         cors_origins = ['http://localhost:3000', 'http://localhost:5173' , 'https://gst-frontend-bay.vercel.app']
     
     # Always include Vercel frontend URLs (critical for deployment)
+    # Allow ALL Vercel domains by pattern matching in after_request
     vercel_origins = [
         'https://gst-sable.vercel.app',
         'https://gst-frontend-bay.vercel.app'
@@ -81,24 +89,22 @@ def create_app(config_name='development'):
     print(f"  CORS_ORIGINS from config: {cors_origins}")
     print(f"  All allowed origins: {all_origins}")
     
-    # Enable CORS - use wildcard in development, specific origins in production
-    # But always allow Vercel origins
-    allowed_origins = all_origins if is_production else "*"
-    
+    # Enable CORS - CRITICAL: Always allow credentials and use pattern matching for Vercel
+    # Use wildcard in development, but in production we'll check origins in after_request
     CORS(app, 
          resources={
              r"/api/*": {
-                 "origins": allowed_origins,
-                 "supports_credentials": True,
+                 "origins": "*" if not is_production else all_origins,
+                 "supports_credentials": True,  # CRITICAL: Must be True for cookies
                  "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
                  "allow_headers": ["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"],
-                 "expose_headers": ["Content-Type", "Authorization"],
+                 "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
                  "max_age": 86400
              }
          },
          # Also apply CORS globally as fallback
-         origins=allowed_origins if is_production else "*",
-         supports_credentials=True,
+         origins="*" if not is_production else all_origins,
+         supports_credentials=True,  # CRITICAL: Must be True for cookies
          allow_headers=["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"]
     )
     
@@ -164,7 +170,7 @@ def create_app(config_name='development'):
                 elif not isinstance(cors_origins, list):
                     cors_origins = []
                 
-                # Always allow Vercel origins
+                # Always allow Vercel origins (pattern match for all *.vercel.app)
                 vercel_origins = [
                     'https://gst-sable.vercel.app',
                     'https://gst-frontend-bay.vercel.app'
@@ -173,20 +179,24 @@ def create_app(config_name='development'):
                 
                 is_production = app.config.get('FLASK_ENV') == 'production'
                 
-                # ALWAYS allow Vercel origins, or if in development, or if in allowed list
-                is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
-                should_allow = not is_production or origin in all_allowed or is_vercel
+                # ALWAYS allow Vercel origins (any *.vercel.app domain), or if in development, or if in allowed list
+                is_vercel = origin.endswith('.vercel.app') or any(origin.startswith(v.replace('https://', '').split('.')[0]) for v in vercel_origins)
+                should_allow = not is_production or origin in all_allowed or is_vercel or origin.endswith('.vercel.app')
                 
                 if should_allow:
-                    # Use direct assignment to ensure headers are set
+                    # CRITICAL: Set CORS headers with credentials support
                     response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be 'true' string
                     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
                     response.headers['Access-Control-Max-Age'] = '86400'
+                    response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
                     print(f"CORS preflight allowed for origin: {origin}")
                 else:
                     print(f"CORS preflight blocked: Origin {origin} not in allowed list: {all_allowed}")
+            else:
+                # No origin header, but still set credentials header
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
             
             return response
     
@@ -196,6 +206,7 @@ def create_app(config_name='development'):
         origin = request.headers.get('Origin')
         if origin:
             # Always allow Vercel origins (critical for deployment)
+            # Pattern match: allow ANY *.vercel.app domain
             vercel_origins = [
                 'https://gst-sable.vercel.app',
                 'https://gst-frontend-bay.vercel.app'
@@ -213,25 +224,35 @@ def create_app(config_name='development'):
             
             is_production = app.config.get('FLASK_ENV') == 'production'
             
-            # ALWAYS allow Vercel origins, or if in development, or if in allowed list
-            should_allow = not is_production or origin in all_allowed or is_vercel
+            # ALWAYS allow Vercel origins (any *.vercel.app domain), or if in development, or if in allowed list
+            should_allow = not is_production or origin in all_allowed or is_vercel or origin.endswith('.vercel.app')
             
             if should_allow:
-                # Always set CORS headers (override any existing ones)
+                # CRITICAL: Always set CORS headers with credentials support
                 response.headers['Access-Control-Allow-Origin'] = origin
-                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be 'true' string, not boolean
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
                 # Expose Set-Cookie header so frontend can see it (though browser handles it automatically)
                 response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
+        else:
+            # Even if no origin, set credentials header for same-origin requests
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
         
-        # Ensure session cookie is set with correct attributes for cross-origin
-        # Flask should set this automatically, but we verify it's configured correctly
+        # CRITICAL: Ensure session cookie is set with correct attributes for cross-origin
+        # Flask should set this automatically, but we verify and fix if needed
         if 'Set-Cookie' in response.headers:
-            # Log cookie being set for debugging
             cookie_header = response.headers.get('Set-Cookie', '')
-            if 'session=' in cookie_header:
-                print(f"Session cookie being set: {cookie_header[:100]}...")
+            # Check if cookie has SameSite=None and Secure flags
+            if 'session_id=' in cookie_header or 'session=' in cookie_header:
+                # If SameSite is missing or wrong, we need to fix it
+                # But Flask-Session handles this via config, so we just log
+                print(f"Session cookie being set: {cookie_header[:150]}...")
+                # Verify SameSite=None is present
+                if 'SameSite=None' not in cookie_header and 'SameSite=none' not in cookie_header:
+                    print("WARNING: Session cookie missing SameSite=None attribute!")
+                if 'Secure' not in cookie_header:
+                    print("WARNING: Session cookie missing Secure attribute!")
         
         return response
 
