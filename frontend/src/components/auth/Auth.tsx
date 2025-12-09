@@ -60,13 +60,32 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
 
       // Debug: Check response headers for Set-Cookie
-      console.log('Login response headers:', {
-        'set-cookie': response.headers.get('Set-Cookie'),
-        'access-control-allow-credentials': response.headers.get('Access-Control-Allow-Credentials'),
-        'access-control-allow-origin': response.headers.get('Access-Control-Allow-Origin'),
+      const setCookieHeader = response.headers.get('Set-Cookie') || response.headers.get('set-cookie');
+      const credentialsHeader = response.headers.get('Access-Control-Allow-Credentials') || response.headers.get('access-control-allow-credentials');
+      const originHeader = response.headers.get('Access-Control-Allow-Origin') || response.headers.get('access-control-allow-origin');
+      
+      console.log('🔍 Login response headers:', {
+        'set-cookie': setCookieHeader,
+        'access-control-allow-credentials': credentialsHeader,
+        'access-control-allow-origin': originHeader,
         'status': response.status,
-        'statusText': response.statusText
+        'statusText': response.statusText,
+        'all-headers': Object.fromEntries(response.headers.entries())
       });
+      
+      if (!setCookieHeader) {
+        console.error('❌ CRITICAL: No Set-Cookie header in login response! Cookies will not be set.');
+      }
+      if (!credentialsHeader || credentialsHeader !== 'true') {
+        console.error('❌ CRITICAL: Access-Control-Allow-Credentials is missing or not "true"! Value:', credentialsHeader);
+      }
+      if (!originHeader) {
+        console.error('❌ CRITICAL: Access-Control-Allow-Origin is missing!');
+      }
+      
+      if (setCookieHeader && credentialsHeader === 'true' && originHeader) {
+        console.log('✅ All CORS headers present correctly!');
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Login failed' }));
