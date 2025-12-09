@@ -72,63 +72,62 @@ def create_app(config_name='development'):
     # Allow all *.vercel.app domains
     vercel_pattern_origins = allowed_origins.copy()
 
-    # Initialize CORS - we'll handle dynamic origins in after_request hook
-    # Note: Can't use "*" with credentials, so we use a function to check origins
-    CORS(
-        app,
-        resources={r"/api/*": {
-            "origins": allowed_origins,  # Base list, extended in after_request
-            "supports_credentials": True,
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"],
-            "expose_headers": ["Set-Cookie", "Content-Type", "Authorization"],
-        }},
-        supports_credentials=True,
-    )
-
-    # CRITICAL: Add after_request hook to ensure CORS headers are ALWAYS set
-    # This MUST run AFTER Flask-CORS processes the response
-    # IMPORTANT: Flask hooks run in REVERSE order of registration
-    # Since we register this AFTER CORS, it runs AFTER CORS's hook
+    # CRITICAL: Register after_request hook BEFORE CORS
+    # Flask hooks run in REVERSE order, so this will run AFTER CORS's hook
+    # This ensures our headers override CORS's headers
     @app.after_request
-    def after_request(response):
-        origin = request.headers.get('Origin')
-        
-        # CRITICAL: ALWAYS set CORS headers if there's an origin
-        # Don't check if it's "allowed" - just set the headers
-        # The browser will reject if needed, but we ensure headers are present
-        if origin:
-            # ALWAYS set headers for any origin (browser will validate)
-            # This ensures cookies work even if Flask-CORS didn't set headers
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be string 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
-            response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Content-Type, Authorization'
+    def after_request_cors(response):
+        try:
+            origin = request.headers.get('Origin')
             
-            # Log for debugging
-            is_vercel = origin.endswith('.vercel.app')
-            is_in_list = origin in allowed_origins
-            print(f"[CORS] ✅ FORCE-SET headers for origin: {origin} (in_list={is_in_list}, vercel={is_vercel})")
-        else:
-            # No origin header - still ensure credentials is set
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] No origin header, set credentials: true")
-        
-        # CRITICAL: Double-check - ensure credentials is ALWAYS 'true' (not missing, not 'false')
-        if 'Access-Control-Allow-Credentials' not in response.headers:
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] 🔧 Force-set credentials (was missing)")
-        elif response.headers.get('Access-Control-Allow-Credentials') != 'true':
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] 🔧 Force-set credentials (was: {response.headers.get('Access-Control-Allow-Credentials')})")
-        
-        # CRITICAL: If origin exists but Access-Control-Allow-Origin is missing or wrong, fix it
-        if origin:
-            current_origin = response.headers.get('Access-Control-Allow-Origin')
-            if current_origin != origin:
+            # CRITICAL: ALWAYS set CORS headers if there's an origin
+            # This overrides Flask-CORS to ensure headers are ALWAYS present
+            if origin:
+                # FORCE set headers for ANY origin (browser will validate)
                 response.headers['Access-Control-Allow-Origin'] = origin
-                print(f"[CORS] 🔧 Fixed Access-Control-Allow-Origin (was: {current_origin}, now: {origin})")
+                response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be string 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Content-Type, Authorization'
+                
+                # Log for debugging
+                is_vercel = origin.endswith('.vercel.app')
+                is_in_list = origin in allowed_origins
+                print(f"[CORS] ✅ FORCE-SET headers for origin: {origin} (in_list={is_in_list}, vercel={is_vercel})")
+            else:
+                # No origin header - still ensure credentials is set
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                print(f"[CORS] No origin header, set credentials: true")
+            
+            # CRITICAL: Double-check - ensure credentials is ALWAYS 'true'
+            if 'Access-Control-Allow-Credentials' not in response.headers:
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                print(f"[CORS] 🔧 Force-set credentials (was missing)")
+            elif response.headers.get('Access-Control-Allow-Credentials') != 'true':
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                print(f"[CORS] 🔧 Force-set credentials (was: {response.headers.get('Access-Control-Allow-Credentials')})")
+            
+            # CRITICAL: If origin exists but Access-Control-Allow-Origin is missing or wrong, fix it
+            if origin:
+                current_origin = response.headers.get('Access-Control-Allow-Origin')
+                if current_origin != origin:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    print(f"[CORS] 🔧 Fixed Access-Control-Allow-Origin (was: {current_origin}, now: {origin})")
+            
+            # Final verification - log what headers are actually set
+            print(f"[CORS] Final headers: Origin={response.headers.get('Access-Control-Allow-Origin')}, Credentials={response.headers.get('Access-Control-Allow-Credentials')}")
+            
+        except Exception as e:
+            # If there's an error, still try to set basic headers
+            print(f"[CORS] ERROR in after_request hook: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                if request.headers.get('Origin'):
+                    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin')
+            except:
+                pass
         
         return response
 
