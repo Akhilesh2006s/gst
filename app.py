@@ -95,6 +95,36 @@ def create_app(config_name='development'):
     
     print(f"[CORS] Flask-CORS configured with origins: {allowed_origins}")
     
+    # CRITICAL: Add Partitioned attribute to session cookies for Chrome's third-party cookie support
+    # This is required for cross-site cookies (Vercel → Railway) in Chrome 2024+
+    @app.after_request
+    def apply_partitioned_cookie(response):
+        """Add Partitioned attribute to session cookies for cross-site cookie support"""
+        # Get all Set-Cookie headers
+        set_cookie_headers = response.headers.getlist("Set-Cookie")
+        
+        if set_cookie_headers:
+            new_cookies = []
+            for cookie in set_cookie_headers:
+                # Only modify session_id cookies
+                if "session_id=" in cookie:
+                    # Check if Partitioned is already present
+                    if "Partitioned" not in cookie and "partitioned" not in cookie.lower():
+                        # Add Partitioned attribute (before any existing attributes)
+                        # Ensure it's added properly formatted
+                        cookie += "; Partitioned"
+                        print(f"[COOKIE] Added Partitioned attribute to session cookie")
+                    else:
+                        print(f"[COOKIE] Session cookie already has Partitioned attribute")
+                new_cookies.append(cookie)
+            
+            # Replace all Set-Cookie headers
+            response.headers.pop("Set-Cookie", None)
+            for cookie in new_cookies:
+                response.headers.add("Set-Cookie", cookie)
+        
+        return response
+    
     # -------------------------------------------------
     # DATABASE + MONGO SESSION STORAGE
     # -------------------------------------------------
