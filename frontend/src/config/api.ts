@@ -1,5 +1,5 @@
 // API Configuration
-// Use environment variable when provided, otherwise use relative URLs (Vite proxy) or hosted backend
+// Always use Railway backend (production)
 const getApiBaseUrl = (): string => {
   // Check for environment variable first
   if (import.meta.env.VITE_API_URL) {
@@ -8,14 +8,7 @@ const getApiBaseUrl = (): string => {
     return url.replace(/\/$/, '');
   }
   
-  // For local development with Vite proxy, use relative URL (same-origin = cookies work!)
-  // Vite proxy will forward /api/* to http://localhost:5000/api/*
-  if (import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // Use relative URL - Vite proxy handles it
-    return '/api';
-  }
-  
-  // Default to hosted backend for production (Vercel)
+  // Always use Railway backend
   const baseUrl = 'https://web-production-f50e6.up.railway.app/api';
   // Ensure no trailing slash
   return baseUrl.replace(/\/$/, '');

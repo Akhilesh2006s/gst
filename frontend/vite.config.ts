@@ -7,12 +7,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        // For development, proxy to localhost backend (same-origin = cookies work!)
-        // For production, this won't be used (Vercel serves static files)
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        // Proxy to Railway backend (production)
+        target: process.env.VITE_API_URL || 'https://web-production-f50e6.up.railway.app',
         changeOrigin: true,
-        secure: false, // false for localhost HTTP
-        // Preserve cookies
+        secure: true, // true for HTTPS (Railway)
+        // Preserve cookies for cross-origin
         cookieDomainRewrite: '',
         // Log proxy requests for debugging
         configure: (proxy, _options) => {

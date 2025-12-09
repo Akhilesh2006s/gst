@@ -241,7 +241,9 @@ def profile():
             }), 200
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        error_trace = traceback.format_exc()
+        print(f"[CUSTOMER PROFILE] ERROR: {str(e)}")
+        print(f"[CUSTOMER PROFILE] Full traceback:\n{error_trace}")
         # Return 200 even on error so frontend can handle it gracefully
         return jsonify({
             'success': False,

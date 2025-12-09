@@ -252,8 +252,8 @@ def check_auth():
     """Check if user is authenticated and return user type"""
     try:
         # Debug: Log session and user info
-        from flask import session as flask_session, request as flask_request
-        cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
+        from flask import session as flask_session, request as flask_request, current_app
+        cookie_name = current_app.config.get('SESSION_COOKIE_NAME', 'session_id')
         cookie_value = flask_request.cookies.get(cookie_name)
         
         print(f"[AUTH CHECK] Cookie received: {cookie_name}={cookie_value}")
@@ -320,11 +320,17 @@ def check_auth():
                 'user_type': None
             })
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[AUTH CHECK] ERROR: {str(e)}")
+        print(f"[AUTH CHECK] Full traceback:\n{error_trace}")
+        # Return 200 with authenticated: false instead of 500
+        # This allows frontend to handle gracefully
         return jsonify({
             'authenticated': False,
             'user_type': None,
             'error': str(e)
-        }), 500
+        }), 200
 
 def is_valid_gst(gst_number):
     """Validate GST number format"""
