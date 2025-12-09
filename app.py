@@ -60,29 +60,38 @@ def create_app(config_name="development"):
     print("Production:", is_production)
     print("-----------------------\n")
 
-    # CORS CONFIG
+    # CORS CONFIG - Allow all origins for testing (you can restrict this later)
+    # For production, you should specify exact origins
     allowed_origins = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "https://gst-sable.vercel.app",
         "https://gst-frontend-bay.vercel.app",
+        "https://web-production-f50e6.up.railway.app",  # Railway backend (for testing)
     ]
+    
+    # Allow all origins for testing - remove this in production
+    allow_all_origins = os.environ.get("ALLOW_ALL_ORIGINS", "true").lower() == "true"
 
+    # Initialize CORS - we'll override headers in after_request for dynamic origin support
     CORS(
         app,
         supports_credentials=True,
-         resources={
-             r"/api/*": {
-                 "origins": allowed_origins,
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        resources={
+            r"/api/*": {
+                "origins": allowed_origins,  # Base list, will be overridden dynamically
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"],
                 "expose_headers": ["Set-Cookie"],
-             }
-         },
+            }
+        },
     )
     
-    print(f"[CORS] Allowed origins: {allowed_origins}")
+    if allow_all_origins:
+        print(f"[CORS] Allowing all origins for testing (will be set dynamically)")
+    else:
+        print(f"[CORS] Allowed origins: {allowed_origins}")
 
     # DATABASE + SESSION STORAGE
     try:
@@ -127,21 +136,50 @@ def create_app(config_name="development"):
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(import_export_bp, url_prefix="/api")
 
-    # ⭐ PARTITIONED COOKIE FIX (CHIPS) - Must be after blueprints
+    # ⭐ CORS AND COOKIE FIX - Must be after blueprints
     @app.after_request
-    def add_partitioned_cookie(response):
-        """Add Partitioned attribute to session cookies for Chrome third-party cookie support"""
+    def add_cors_and_cookie_headers(response):
+        """Add CORS headers and fix cookies for cross-origin requests"""
+        # Get the origin from the request
+        origin = request.headers.get('Origin')
+        
+        # Set CORS headers explicitly
+        # NOTE: Cannot use wildcard (*) with credentials, must use specific origin
+        if origin:
+            # For testing, allow any origin that requests
+            if allow_all_origins:
+                # Allow any origin for testing
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+            elif origin in allowed_origins:
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+        
+        # Fix cookies for cross-origin
         cookies = response.headers.getlist("Set-Cookie")
         
         if cookies:
             # Remove all existing Set-Cookie headers
             response.headers.pop("Set-Cookie", None)
             
-            # Re-add each cookie with Partitioned if it's a session_id cookie
+            # Re-add each cookie with proper attributes
             for cookie in cookies:
-                if "session_id=" in cookie and "Partitioned" not in cookie:
-                    cookie += "; Partitioned"
-                    print(f"[COOKIE] Added Partitioned attribute to session cookie")
+                if "session_id=" in cookie:
+                    # Ensure SameSite=None and Secure for cross-origin
+                    if is_production and "SameSite=None" not in cookie:
+                        cookie += "; SameSite=None"
+                    if is_production and "Secure" not in cookie:
+                        cookie += "; Secure"
+                    # Add Partitioned for Chrome third-party cookie support
+                    if "Partitioned" not in cookie:
+                        cookie += "; Partitioned"
+                    print(f"[COOKIE] Fixed session cookie: {cookie[:100]}...")
                 response.headers.add("Set-Cookie", cookie)
         
         return response

@@ -97,8 +97,33 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const data = await response.json();
       console.log('Login response data:', data);
 
+      // Check cookies after login
+      const cookiesAfterLogin = document.cookie.split(';').reduce((acc, cookie) => {
+        const [name, value] = cookie.trim().split('=');
+        acc[name] = value;
+        return acc;
+      }, {} as Record<string, string>);
+      
+      console.log('🍪 Cookies after login:', cookiesAfterLogin);
+      console.log('🍪 Session cookie (session_id):', cookiesAfterLogin['session_id'] || 'NOT FOUND');
+      
+      if (!cookiesAfterLogin['session_id']) {
+        console.error('❌ CRITICAL: Session cookie was not set after login!');
+        console.error('❌ This means the browser rejected the cookie or it was not sent by the server.');
+        console.error('❌ Check:');
+        console.error('   1. Are CORS headers correct? (see response headers above)');
+        console.error('   2. Is the cookie Secure=True and SameSite=None for cross-origin?');
+        console.error('   3. Is the backend URL correct?');
+      } else {
+        console.log('✅ Session cookie was set successfully!');
+        console.log('✅ Cookie value (first 20 chars):', cookiesAfterLogin['session_id'].substring(0, 20) + '...');
+      }
+
       if (data.success) {
         setSuccess(data.message || 'Login successful!');
+        
+        // Small delay to ensure cookie is fully processed
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Proceed directly with login - no verification needed
         onLogin(userType);

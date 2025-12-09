@@ -50,6 +50,18 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        console.log('🔍 [App] Checking authentication on app load...');
+        
+        // Check cookies first
+        const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+          const [name, value] = cookie.trim().split('=');
+          acc[name] = value;
+          return acc;
+        }, {} as Record<string, string>);
+        
+        console.log('🍪 [App] Current cookies:', cookies);
+        console.log('🍪 [App] Session cookie:', cookies['session_id'] || 'NOT FOUND');
+        
         // Try admin check first
         const adminCheck = await fetch(`${API_BASE_URL}/auth/check`, {
           credentials: 'include',
@@ -58,13 +70,26 @@ const App: React.FC = () => {
           }
         });
 
+        console.log('🔍 [App] Admin check response:', {
+          status: adminCheck.status,
+          'Access-Control-Allow-Credentials': adminCheck.headers.get('Access-Control-Allow-Credentials'),
+          'Access-Control-Allow-Origin': adminCheck.headers.get('Access-Control-Allow-Origin')
+        });
+
         if (adminCheck.ok) {
           const adminData = await adminCheck.json().catch(() => ({ authenticated: false }));
+          console.log('🔍 [App] Admin check data:', adminData);
+          
           if (adminData.authenticated) {
+            console.log('✅ [App] Admin authenticated!');
             setUserType('admin');
             setCheckingAuth(false);
             return;
+          } else {
+            console.warn('⚠️ [App] Admin check returned authenticated: false');
           }
+        } else {
+          console.warn('⚠️ [App] Admin check failed with status:', adminCheck.status);
         }
 
         // Try customer check
@@ -75,20 +100,34 @@ const App: React.FC = () => {
           }
         });
 
+        console.log('🔍 [App] Customer check response:', {
+          status: customerCheck.status,
+          'Access-Control-Allow-Credentials': customerCheck.headers.get('Access-Control-Allow-Credentials'),
+          'Access-Control-Allow-Origin': customerCheck.headers.get('Access-Control-Allow-Origin')
+        });
+
         if (customerCheck.ok) {
           const customerData = await customerCheck.json().catch(() => ({ authenticated: false }));
+          console.log('🔍 [App] Customer check data:', customerData);
+          
           // Check for authenticated flag explicitly
           if (customerData && customerData.authenticated === true) {
+            console.log('✅ [App] Customer authenticated!');
             setUserType('customer');
             setCheckingAuth(false);
             return;
+          } else {
+            console.warn('⚠️ [App] Customer check returned authenticated: false');
           }
+        } else {
+          console.warn('⚠️ [App] Customer check failed with status:', customerCheck.status);
         }
 
         // No valid session found
+        console.warn('❌ [App] No valid session found, user not authenticated');
         setUserType(null);
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('❌ [App] Auth check error:', error);
         setUserType(null);
       } finally {
         setCheckingAuth(false);

@@ -35,8 +35,28 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
     verifyAuthAndFetchData();
   }, []);
 
+  // Helper function to check cookies
+  const checkCookies = () => {
+    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+      const [name, value] = cookie.trim().split('=');
+      acc[name] = value;
+      return acc;
+    }, {} as Record<string, string>);
+    
+    console.log('🍪 Current cookies:', cookies);
+    console.log('🍪 Session cookie (session_id):', cookies['session_id'] || 'NOT FOUND');
+    
+    return cookies;
+  };
+
   const verifyAuthAndFetchData = async () => {
     try {
+      console.log('🔍 ========== AUTH VERIFICATION START ==========');
+      console.log('🔍 API Base URL:', API_BASE_URL);
+      
+      // Check cookies before request
+      const cookiesBefore = checkCookies();
+      
       // Check authentication with backend
       const authCheck = await fetch(`${API_BASE_URL}/auth/check`, {
         credentials: 'include',
@@ -45,20 +65,72 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
         }
       });
       
+      // Log response details
+      const credentialsHeader = authCheck.headers.get('Access-Control-Allow-Credentials');
+      const originHeader = authCheck.headers.get('Access-Control-Allow-Origin');
+      const setCookieHeader = authCheck.headers.get('Set-Cookie');
+      
+      console.log('🔍 Auth check response:', {
+        status: authCheck.status,
+        statusText: authCheck.statusText,
+        'Access-Control-Allow-Credentials': credentialsHeader,
+        'Access-Control-Allow-Origin': originHeader,
+        'Set-Cookie': setCookieHeader,
+        'all-headers': Object.fromEntries(authCheck.headers.entries())
+      });
+      
       const authData = await authCheck.json().catch(() => ({ authenticated: false }));
-      console.log('Auth check result:', authData);
+      console.log('🔍 Auth check result:', authData);
+      
+      // Check cookies after request
+      const cookiesAfter = checkCookies();
+      
+      // Verify cookie was sent/received
+      if (!cookiesAfter['session_id'] && !cookiesBefore['session_id']) {
+        console.error('❌ CRITICAL: No session_id cookie found!');
+        console.error('❌ This means the cookie was never set or was rejected by the browser.');
+      } else if (cookiesAfter['session_id'] && !cookiesBefore['session_id']) {
+        console.log('✅ Session cookie was set during this request!');
+      } else if (cookiesAfter['session_id']) {
+        console.log('✅ Session cookie exists:', cookiesAfter['session_id'].substring(0, 20) + '...');
+      }
+      
+      // Verify CORS headers
+      if (!credentialsHeader || credentialsHeader !== 'true') {
+        console.error('❌ CRITICAL: Access-Control-Allow-Credentials is missing or not "true"!');
+      }
+      if (!originHeader) {
+        console.error('❌ CRITICAL: Access-Control-Allow-Origin is missing!');
+      }
+      
+      if (credentialsHeader === 'true' && originHeader) {
+        console.log('✅ CORS headers are correct!');
+      }
+      
+      console.log('🔍 ========== AUTH VERIFICATION END ==========');
       
       if (!authCheck.ok || !authData.authenticated) {
-        console.warn('User not authenticated, redirecting to login');
+        console.warn('❌ User not authenticated, redirecting to login');
+        console.warn('❌ Reason:', {
+          'response-ok': authCheck.ok,
+          'authenticated': authData.authenticated,
+          'error': authData.error,
+          'has-cookie': !!cookiesAfter['session_id']
+        });
         navigate('/');
         return;
       }
       
       // Mark as authenticated and fetch data
+      console.log('✅ Authentication verified! User is authenticated.');
       setAuthenticated(true);
       await fetchDashboardData();
     } catch (error) {
-      console.error('Auth verification failed:', error);
+      console.error('❌ Auth verification failed:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       navigate('/');
     }
   };
