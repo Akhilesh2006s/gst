@@ -80,8 +80,54 @@ def create_app(config_name='development'):
         "https://gst-frontend-bay.vercel.app",
     ]
     
+    # CRITICAL FALLBACK: Register BEFORE CORS so it runs AFTER CORS
+    # Flask hooks run in REVERSE order, so this hook runs AFTER CORS processes
+    # This ensures headers are ALWAYS set, even if Flask-CORS fails
+    @app.after_request
+    def ensure_cors_headers(response):
+        origin = request.headers.get('Origin')
+        
+        # Log what we received
+        has_origin_header = 'Access-Control-Allow-Origin' in response.headers
+        has_credentials_header = 'Access-Control-Allow-Credentials' in response.headers
+        
+        print(f"[CORS FALLBACK] Origin: {origin}, Has-Origin-Header: {has_origin_header}, Has-Credentials: {has_credentials_header}")
+        
+        # ALWAYS set headers if origin exists and headers are missing
+        if origin:
+            # Check if origin is allowed
+            is_allowed = origin in allowed_origins or origin.endswith('.vercel.app')
+            
+            if is_allowed:
+                # FORCE set headers - override Flask-CORS if needed
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+                print(f"[CORS FALLBACK] ✅ FORCE-SET headers for origin: {origin}")
+            else:
+                print(f"[CORS FALLBACK] ⚠️ Origin not allowed: {origin}")
+        else:
+            print(f"[CORS FALLBACK] ⚠️ No Origin header in request")
+        
+        # ALWAYS ensure credentials header is set (even without origin)
+        if 'Access-Control-Allow-Credentials' not in response.headers:
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS FALLBACK] ✅ Force-set Access-Control-Allow-Credentials")
+        elif response.headers.get('Access-Control-Allow-Credentials') != 'true':
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS FALLBACK] ✅ Fixed Access-Control-Allow-Credentials (was: {response.headers.get('Access-Control-Allow-Credentials')})")
+        
+        # Final verification
+        final_origin = response.headers.get('Access-Control-Allow-Origin')
+        final_credentials = response.headers.get('Access-Control-Allow-Credentials')
+        print(f"[CORS FALLBACK] Final headers - Origin: {final_origin}, Credentials: {final_credentials}")
+        
+        return response
+    
     # Simple CORS configuration - Let Flask-CORS handle everything automatically
-    # No custom hooks needed - Flask-CORS will correctly set headers for allowed origins
+    # Flask-CORS will set headers, and our fallback hook above will ensure they're set if Flask-CORS fails
     CORS(
         app,
         resources={r"/api/*": {
