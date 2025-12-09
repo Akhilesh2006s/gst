@@ -76,8 +76,9 @@ const App: React.FC = () => {
         });
 
         if (customerCheck.ok) {
-          const customerData = await customerCheck.json().catch(() => ({}));
-          if (customerData && !customerData.error) {
+          const customerData = await customerCheck.json().catch(() => ({ authenticated: false }));
+          // Check for authenticated flag explicitly
+          if (customerData && customerData.authenticated === true) {
             setUserType('customer');
             setCheckingAuth(false);
             return;

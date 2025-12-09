@@ -88,13 +88,27 @@ def login():
         
         customer = Customer.find_by_email(data['email'])
         if customer and customer.check_password(data['password']):
+            # Login user - Flask-Login will store user ID in session
             login_user(customer, remember=data.get('remember_me', False))
+            
+            # Make session permanent
             session.permanent = True
-            # Force session to be saved immediately
+            
+            # CRITICAL: Write to session to force Flask to save it and set cookie
+            # Flask only sets the cookie if session is modified
+            session['_login_time'] = str(datetime.now())
+            session['customer_id'] = str(customer.id)  # Store customer ID explicitly
             session.modified = True
             
             # Ensure ID is a string (convert ObjectId if needed)
             customer_id = str(customer.id) if customer.id else None
+            
+            # Log session info for debugging
+            from flask import current_app
+            print(f"Customer login successful for: {customer.email}")
+            print(f"Session keys after login: {list(session.keys())}")
+            print(f"Session modified flag: {session.modified}")
+            print(f"Session permanent: {session.permanent}")
             
             return jsonify({
                 'success': True,
@@ -188,7 +202,17 @@ def reset_password():
 def profile():
     """Get customer profile - also used for session verification"""
     try:
-        if current_user.is_authenticated:
+        # Check if user is authenticated - use getattr to safely check
+        is_authenticated = getattr(current_user, 'is_authenticated', False) if hasattr(current_user, 'is_authenticated') else False
+        
+        # Debug logging
+        print(f"[CUSTOMER PROFILE] Current user type: {type(current_user)}")
+        print(f"[CUSTOMER PROFILE] Is authenticated: {is_authenticated}")
+        print(f"[CUSTOMER PROFILE] Has id: {hasattr(current_user, 'id')}")
+        if hasattr(current_user, 'id'):
+            print(f"[CUSTOMER PROFILE] User ID: {current_user.id}")
+        
+        if is_authenticated:
             # Ensure ID is a string (convert ObjectId if needed)
             customer_id = str(current_user.id) if hasattr(current_user, 'id') and current_user.id else None
             
@@ -208,19 +232,22 @@ def profile():
                 }
             })
         else:
+            # Return 200 with authenticated: false for session checks (not 401)
+            # This allows frontend to distinguish between "no session" and "error"
             return jsonify({
                 'success': False,
                 'authenticated': False,
                 'message': 'Not authenticated'
-            }), 401
+            }), 200
     except Exception as e:
         import traceback
         traceback.print_exc()
+        # Return 200 even on error so frontend can handle it gracefully
         return jsonify({
             'success': False,
             'authenticated': False,
             'error': str(e)
-        }), 500
+        }), 200
 
 @customer_auth_bp.route('/products', methods=['GET'])
 @login_required
