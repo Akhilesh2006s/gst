@@ -24,7 +24,7 @@ from routes.import_export_routes import import_export_bp
 def create_app(config_name="development"):
     app = Flask(__name__, static_folder="frontend/dist", template_folder="frontend/dist")
     app.config.from_object(config[config_name])
-
+    
     # Environment detection
     is_development = (
         config_name == "development"
@@ -72,16 +72,23 @@ def create_app(config_name="development"):
     CORS(
         app,
         supports_credentials=True,
-        resources={r"/api/*": {"origins": allowed_origins}},
+         resources={
+             r"/api/*": {
+                 "origins": allowed_origins,
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+                "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"],
+                "expose_headers": ["Set-Cookie"],
+             }
+         },
     )
-
+    
     print(f"[CORS] Allowed origins: {allowed_origins}")
 
     # DATABASE + SESSION STORAGE
     try:
         db = init_db(app)
         print("MongoDB connected successfully")
-
+        
         from mongodb_session import MongoDBSessionInterface
         app.session_interface = MongoDBSessionInterface(
             db=get_db(),
@@ -97,7 +104,7 @@ def create_app(config_name="development"):
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.login_view = None
-
+    
     @login_manager.user_loader
     def load_user(user_id):
         from models import SuperAdmin, Customer
@@ -107,21 +114,36 @@ def create_app(config_name="development"):
             or Customer.find_by_id(user_id)
         )
 
-    # ⭐ PARTITIONED COOKIE FIX (CHIPS)
+    # REGISTER BLUEPRINTS
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(customer_bp, url_prefix="/api/customers")
+    app.register_blueprint(product_bp, url_prefix="/api/products")
+    app.register_blueprint(invoice_bp, url_prefix="/api/invoices")
+    app.register_blueprint(gst_bp, url_prefix="/api/gst")
+    app.register_blueprint(report_bp, url_prefix="/api/reports")
+    app.register_blueprint(customer_auth_bp, url_prefix="/api/customer-auth")
+    app.register_blueprint(super_admin_bp, url_prefix="/api/super-admin")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(import_export_bp, url_prefix="/api")
+
+    # ⭐ PARTITIONED COOKIE FIX (CHIPS) - Must be after blueprints
     @app.after_request
     def add_partitioned_cookie(response):
+        """Add Partitioned attribute to session cookies for Chrome third-party cookie support"""
         cookies = response.headers.getlist("Set-Cookie")
-        new_cookies = []
-
-        for cookie in cookies:
-            if "session_id=" in cookie:
-                if "Partitioned" not in cookie:
+        
+        if cookies:
+            # Remove all existing Set-Cookie headers
+            response.headers.pop("Set-Cookie", None)
+            
+            # Re-add each cookie with Partitioned if it's a session_id cookie
+            for cookie in cookies:
+                if "session_id=" in cookie and "Partitioned" not in cookie:
                     cookie += "; Partitioned"
-            new_cookies.append(cookie)
-
-        if new_cookies:
-            response.headers.set("Set-Cookie", ", ".join(new_cookies))
-
+                    print(f"[COOKIE] Added Partitioned attribute to session cookie")
+                response.headers.add("Set-Cookie", cookie)
+        
         return response
 
     # HEALTH CHECK
@@ -139,7 +161,7 @@ def create_app(config_name="development"):
             return send_from_directory(app.static_folder, path)
 
         return send_from_directory(app.static_folder, "index.html")
-
+    
     return app
 
 
