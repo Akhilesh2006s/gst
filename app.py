@@ -55,12 +55,12 @@ def create_app(config_name='development'):
     app.url_map.strict_slashes = False
     
     # Get CORS origins from config
-    cors_origins = app.config.get('CORS_ORIGINS', ['http://localhost:3000', 'http://localhost:5173'])
+    cors_origins = app.config.get('CORS_ORIGINS', ['http://localhost:3000', 'http://localhost:5173' , 'https://gst-frontend-bay.vercel.app'])
     # Ensure cors_origins is a list (handle both list and string formats)
     if isinstance(cors_origins, str):
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
     elif not isinstance(cors_origins, list):
-        cors_origins = ['http://localhost:3000', 'http://localhost:5173']
+        cors_origins = ['http://localhost:3000', 'http://localhost:5173' , 'https://gst-frontend-bay.vercel.app']
     
     # Always include Vercel frontend URLs (critical for deployment)
     vercel_origins = [
