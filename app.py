@@ -95,44 +95,75 @@ def create_app(config_name='development'):
                 print(f"[CORS] Preflight handled for origin: {origin}")
                 return response
     
-    # CRITICAL: Manual CORS header setting - ALWAYS runs for API routes
+    # CRITICAL: Manual CORS header setting - ALWAYS runs for ALL requests
     # This replaces Flask-CORS completely to ensure headers are ALWAYS set
     @app.after_request
     def set_cors_headers(response):
-        origin = request.headers.get('Origin')
-        path = request.path
+        # ALWAYS log that hook is running - this helps debug if hook isn't being called
+        print(f"[CORS HOOK] Hook called for path: {request.path}, method: {request.method}")
         
-        # Only process API routes
-        if not path.startswith('/api/'):
-            return response
-        
-        print(f"[CORS] ========== SETTING CORS HEADERS ==========")
-        print(f"[CORS] Path: {path}, Method: {request.method}")
-        print(f"[CORS] Origin: {origin}")
-        
-        # ALWAYS set headers if origin exists
-        if origin:
-            # Check if origin is allowed (or allow all for debugging)
-            is_allowed = origin in allowed_origins or origin.endswith('.vercel.app')
+        try:
+            origin = request.headers.get('Origin')
+            path = request.path
+            method = request.method
             
-            # FORCE set headers - don't check if they exist, just set them
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
-            response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+            # Process ALL requests (not just API routes) to ensure CORS works everywhere
+            print(f"[CORS] ========== SETTING CORS HEADERS ==========")
+            print(f"[CORS] Path: {path}, Method: {method}")
+            print(f"[CORS] Origin: {origin}")
+            print(f"[CORS] All request headers: {dict(request.headers)}")
             
-            print(f"[CORS] ✅ SET headers - Origin: {origin}, Allowed: {is_allowed}")
-        else:
-            # No origin - still set credentials
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] ⚠️ No origin, set credentials only")
-        
-        # Final verification - log what we actually set
-        final_origin = response.headers.get('Access-Control-Allow-Origin')
-        final_credentials = response.headers.get('Access-Control-Allow-Credentials')
-        print(f"[CORS] Final headers - Origin: {final_origin}, Credentials: {final_credentials}")
-        print(f"[CORS] =========================================")
+            # ALWAYS set headers if origin exists (for API routes)
+            if path.startswith('/api/'):
+                print(f"[CORS] ✅ This is an API route, setting CORS headers")
+                
+                if origin:
+                    # FORCE set headers - don't check if they exist, just set them
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                    response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+                    
+                    is_allowed = origin in allowed_origins or origin.endswith('.vercel.app')
+                    print(f"[CORS] ✅ SET headers - Origin: {origin}, Allowed: {is_allowed}")
+                else:
+                    # API route but no origin - still set credentials
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    print(f"[CORS] ⚠️ API route but no origin, set credentials only")
+                
+                # ALWAYS ensure credentials header is set for API routes (double-check)
+                if 'Access-Control-Allow-Credentials' not in response.headers:
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    print(f"[CORS] ✅ Force-set Access-Control-Allow-Credentials (was missing)")
+                elif response.headers.get('Access-Control-Allow-Credentials') != 'true':
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    print(f"[CORS] ✅ Fixed Access-Control-Allow-Credentials")
+                
+                # Final verification - log what we actually set
+                final_origin = response.headers.get('Access-Control-Allow-Origin')
+                final_credentials = response.headers.get('Access-Control-Allow-Credentials')
+                print(f"[CORS] Final headers - Origin: {final_origin}, Credentials: {final_credentials}")
+                print(f"[CORS] Response status: {response.status_code}")
+            else:
+                print(f"[CORS] ⏭️ Not an API route ({path}), skipping CORS")
+            
+            print(f"[CORS] =========================================")
+        except Exception as e:
+            print(f"[CORS] ❌ ERROR in CORS hook: {e}")
+            import traceback
+            traceback.print_exc()
+            # Still try to set basic headers even if there's an error
+            try:
+                path = request.path if hasattr(request, 'path') else 'unknown'
+                origin = request.headers.get('Origin') if hasattr(request, 'headers') else None
+                if path.startswith('/api/'):
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    if origin:
+                        response.headers['Access-Control-Allow-Origin'] = origin
+                    print(f"[CORS] ✅ Set headers in error handler")
+            except Exception as e2:
+                print(f"[CORS] ❌ Failed to set headers in error handler: {e2}")
         
         return response
     
