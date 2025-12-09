@@ -31,39 +31,38 @@ def create_app(config_name='development'):
     app = Flask(__name__, static_folder='frontend/dist', template_folder='frontend/dist')
     app.config.from_object(config[config_name])
     
-    # Configure session to use MongoDB instead of cookies
-    # This avoids cross-origin cookie issues - only session ID stored in cookie
+    # CRITICAL: Set session cookie configuration BEFORE initializing session interface
+    # This MUST be done before any session-related code runs
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     
-    # Session cookie configuration (only stores session ID, not data)
-    # CRITICAL: For cross-origin cookies (Vercel frontend + Railway backend)
+    # Determine if we're in development or production
+    is_development = config_name == 'development' or app.config.get('FLASK_ENV') == 'development'
+    
+    # CRITICAL: Session cookie configuration - MUST be set BEFORE session interface
     app.config['SESSION_COOKIE_NAME'] = 'session_id'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    # CRITICAL: Secure must be False for HTTP (localhost), True for HTTPS (production)
-    # Check if we're in development (localhost) or production (HTTPS)
-    is_development = config_name == 'development' or app.config.get('FLASK_ENV') == 'development'
-    # For localhost HTTP, Secure must be False. For production HTTPS, Secure must be True
+    # Secure: True in production (HTTPS). False on localhost (HTTP).
     app.config['SESSION_COOKIE_SECURE'] = not is_development  # False for localhost, True for production
-    # CRITICAL: SameSite=None is required for cross-origin cookies, but only works with Secure=True
-    # For localhost (same-origin), we can use 'Lax'. For production (cross-origin), use 'None'
-    if is_development:
-        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Works with Secure=False for localhost
-    else:
-        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin with Secure=True
+    # IMPORTANT NOTE about SameSite:
+    # - In production (HTTPS) we MUST use 'None' so cross-site fetches send cookies.
+    # - In local development over HTTP, SameSite=None + Secure=False will be rejected by browsers.
+    #   So for local dev keep 'Lax' and use a proxy (Vite proxy) or same-origin to allow cookies.
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None' if not is_development else 'Lax'
     # Don't set domain - let browser handle it for cross-origin
     app.config['SESSION_COOKIE_DOMAIN'] = None
     # Set session cookie path to root
     app.config['SESSION_COOKIE_PATH'] = '/'
     
     # Log cookie configuration for debugging
-    print(f"Session Cookie Configuration:")
+    print(f"Session Cookie Configuration (BEFORE session interface):")
     print(f"  Name: {app.config['SESSION_COOKIE_NAME']}")
     print(f"  Secure: {app.config['SESSION_COOKIE_SECURE']}")
     print(f"  SameSite: {app.config['SESSION_COOKIE_SAMESITE']}")
     print(f"  HttpOnly: {app.config['SESSION_COOKIE_HTTPONLY']}")
     print(f"  Path: {app.config['SESSION_COOKIE_PATH']}")
     print(f"  Domain: {app.config['SESSION_COOKIE_DOMAIN']}")
+    print(f"  Is Development: {is_development}")
     
     # Disable strict slashes to prevent redirects that break CORS preflight
     app.url_map.strict_slashes = False
@@ -96,12 +95,20 @@ def create_app(config_name='development'):
     print(f"  CORS_ORIGINS from config: {cors_origins}")
     print(f"  All allowed origins: {all_origins}")
     
-    # Enable CORS - CRITICAL: Always allow credentials and use pattern matching for Vercel
-    # Use wildcard in development, but in production we'll check origins in after_request
+    # CRITICAL: Cannot use wildcard origins with credentials=True
+    # Must use explicit origins list when supports_credentials=True
+    # Add localhost origins for development
+    resources_origins = all_origins.copy()
+    if not is_production:
+        # Add localhost origins for development
+        localhost_origins = ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000']
+        resources_origins = list(set(resources_origins + localhost_origins))
+    
+    # Enable CORS with explicit origins (NO wildcard when credentials=True)
     CORS(app, 
          resources={
              r"/api/*": {
-                 "origins": "*" if not is_production else all_origins,
+                 "origins": resources_origins,  # Explicit list, no wildcard
                  "supports_credentials": True,  # CRITICAL: Must be True for cookies
                  "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
                  "allow_headers": ["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"],
@@ -109,8 +116,8 @@ def create_app(config_name='development'):
                  "max_age": 86400
              }
          },
-         # Also apply CORS globally as fallback
-         origins="*" if not is_production else all_origins,
+         # Also apply CORS globally as fallback (explicit origins, no wildcard)
+         origins=resources_origins,  # Explicit list, no wildcard
          supports_credentials=True,  # CRITICAL: Must be True for cookies
          allow_headers=["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"]
     )
@@ -121,7 +128,8 @@ def create_app(config_name='development'):
         db = init_db(app)
         print("MongoDB initialized")
         
-        # Set up custom MongoDB session interface
+        # CRITICAL: Set up custom MongoDB session interface AFTER config is set
+        # The session interface will read from app.config, so config must be set first
         from mongodb_session import MongoDBSessionInterface
         app.session_interface = MongoDBSessionInterface(
             db=get_db(),
@@ -129,6 +137,13 @@ def create_app(config_name='development'):
             key_prefix='session:'
         )
         print("MongoDB session interface initialized - sessions stored in MongoDB")
+        
+        # Verify config is still correct after session interface initialization
+        print(f"Session Cookie Configuration (AFTER session interface):")
+        print(f"  Name: {app.config['SESSION_COOKIE_NAME']}")
+        print(f"  Secure: {app.config['SESSION_COOKIE_SECURE']}")
+        print(f"  SameSite: {app.config['SESSION_COOKIE_SAMESITE']}")
+        print(f"  HttpOnly: {app.config['SESSION_COOKIE_HTTPONLY']}")
     except Exception as e:
         # Log error but don't fail app startup - health check should still work
         import logging

@@ -7,9 +7,19 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'https://web-production-f50e6.up.railway.app',
+        // For development, proxy to localhost backend (same-origin = cookies work!)
+        // For production, this won't be used (Vercel serves static files)
+        target: process.env.VITE_API_URL || 'http://localhost:5000',
         changeOrigin: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // false for localhost HTTP
+        // Preserve cookies
+        cookieDomainRewrite: '',
+        // Log proxy requests for debugging
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log(`[Vite Proxy] ${req.method} ${req.url} -> ${proxyReq.path}`);
+          });
+        },
       }
     }
   },

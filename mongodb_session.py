@@ -144,27 +144,41 @@ class MongoDBSessionInterface(SessionInterface):
                 else:
                     samesite = config_samesite
             
-            # Set cookie with session ID - CRITICAL for cross-origin
-            # Get secure and samesite from app config (respects development vs production)
+            # CRITICAL: Get secure and samesite from app config
+            # These MUST match what was set in app.py BEFORE session interface initialization
             secure = app.config.get('SESSION_COOKIE_SECURE', False)
             samesite_config = app.config.get('SESSION_COOKIE_SAMESITE', 'Lax')
+            
             # Convert 'None' string to Python None, 'Lax'/'Strict' stay as strings
             samesite = None if samesite_config == 'None' else samesite_config
             
+            # Get other cookie settings from config
+            httponly = app.config.get('SESSION_COOKIE_HTTPONLY', True)
+            cookie_path = app.config.get('SESSION_COOKIE_PATH', '/')
+            
+            # Set cookie with session ID - CRITICAL for cross-origin
             response.set_cookie(
                 cookie_name,
                 sid,
                 expires=expires,  # Flask accepts datetime objects directly
-                httponly=True,  # Always HttpOnly for security
+                httponly=httponly,  # From config
                 domain=domain,  # None for cross-origin
-                path=path,  # '/' for root path
-                secure=secure,  # False for HTTP (localhost), True for HTTPS (production)
-                samesite=samesite  # 'Lax' for localhost, None for cross-origin production
+                path=cookie_path,  # From config
+                secure=secure,  # From config (False for HTTP, True for HTTPS)
+                samesite=samesite  # From config ('Lax' for localhost, None for cross-origin)
             )
             
-            # Log cookie being set for debugging
-            print(f"[SESSION] Setting cookie: name={cookie_name}, value={sid[:20]}..., secure=True, samesite=None, domain={domain}, path={path}, expires={expires}")
-            print(f"[SESSION] Cookie header will be: {cookie_name}={sid}; Secure; SameSite=None; HttpOnly; Path={path}")
+            # Log cookie being set for debugging - show ACTUAL values being used
+            samesite_str = 'None' if samesite is None else samesite
+            print(f"[SESSION] Setting cookie with ACTUAL config values:")
+            print(f"  name={cookie_name}")
+            print(f"  value={sid[:20]}...")
+            print(f"  secure={secure}")
+            print(f"  samesite={samesite_str}")
+            print(f"  httponly={httponly}")
+            print(f"  domain={domain}")
+            print(f"  path={cookie_path}")
+            print(f"  expires={expires}")
         except Exception as e:
             print(f"Error saving session to MongoDB: {e}")
             import traceback
