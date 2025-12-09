@@ -1,15 +1,10 @@
-from flask import Flask, render_template, send_from_directory, jsonify, request, send_file, make_response
+from flask import Flask, send_from_directory, jsonify, request, send_file, make_response
 from flask_cors import CORS
 import os
 from config import config
 from database import init_app as init_db, get_db
 from flask_login import LoginManager
 from models import User
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
 from io import BytesIO
 from datetime import timedelta
 import datetime
@@ -27,451 +22,189 @@ from routes.super_admin_routes import super_admin_bp
 from routes.admin_routes import admin_bp
 from routes.import_export_routes import import_export_bp
 
+
 def create_app(config_name='development'):
     app = Flask(__name__, static_folder='frontend/dist', template_folder='frontend/dist')
     app.config.from_object(config[config_name])
-    
-    # CRITICAL: Set session cookie configuration BEFORE initializing session interface
-    # This MUST be done before any session-related code runs
-    app.config['SESSION_PERMANENT'] = True
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-    
-    # Determine if we're in development or production
+
+    # -------------------------------------------------
+    # SESSION COOKIE CONFIG (IMPORTANT)
+    # -------------------------------------------------
     is_development = config_name == 'development' or app.config.get('FLASK_ENV') == 'development'
-    
-    # CRITICAL: Session cookie configuration - MUST be set BEFORE session interface
-    app.config['SESSION_COOKIE_NAME'] = 'session_id'
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    # Secure: True in production (HTTPS). False on localhost (HTTP).
-    app.config['SESSION_COOKIE_SECURE'] = not is_development  # False for localhost, True for production
-    # IMPORTANT NOTE about SameSite:
-    # - In production (HTTPS) we MUST use 'None' so cross-site fetches send cookies.
-    # - In local development over HTTP, SameSite=None + Secure=False will be rejected by browsers.
-    #   So for local dev keep 'Lax' and use a proxy (Vite proxy) or same-origin to allow cookies.
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None' if not is_development else 'Lax'
-    # Don't set domain - let browser handle it for cross-origin
-    app.config['SESSION_COOKIE_DOMAIN'] = None
-    # Set session cookie path to root
-    app.config['SESSION_COOKIE_PATH'] = '/'
-    
-    # Log cookie configuration for debugging
-    print(f"Session Cookie Configuration (BEFORE session interface):")
-    print(f"  Name: {app.config['SESSION_COOKIE_NAME']}")
-    print(f"  Secure: {app.config['SESSION_COOKIE_SECURE']}")
-    print(f"  SameSite: {app.config['SESSION_COOKIE_SAMESITE']}")
-    print(f"  HttpOnly: {app.config['SESSION_COOKIE_HTTPONLY']}")
-    print(f"  Path: {app.config['SESSION_COOKIE_PATH']}")
-    print(f"  Domain: {app.config['SESSION_COOKIE_DOMAIN']}")
-    print(f"  Is Development: {is_development}")
-    
-    # Disable strict slashes to prevent redirects that break CORS preflight
-    app.url_map.strict_slashes = False
-    
-    # Get CORS origins from config
-    cors_origins = app.config.get('CORS_ORIGINS', ['http://localhost:3000', 'http://localhost:5173' , 'https://gst-frontend-bay.vercel.app'])
-    # Ensure cors_origins is a list (handle both list and string formats)
-    if isinstance(cors_origins, str):
-        cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
-    elif not isinstance(cors_origins, list):
-        cors_origins = ['http://localhost:3000', 'http://localhost:5173' , 'https://gst-frontend-bay.vercel.app']
-    
-    # Always include Vercel frontend URLs (critical for deployment)
-    # Allow ALL Vercel domains by pattern matching in after_request
-    vercel_origins = [
-        'https://gst-sable.vercel.app',
-        'https://gst-frontend-bay.vercel.app'
+    is_production = not is_development
+
+    app.config["SESSION_COOKIE_NAME"] = "session_id"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_PERMANENT"] = True
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
+    if is_production:
+        # PRODUCTION (Railway → HTTPS)
+        app.config["SESSION_COOKIE_SECURE"] = True
+        app.config["SESSION_COOKIE_SAMESITE"] = "None"
+    else:
+        # LOCAL DEVELOPMENT (HTTP → cannot use SameSite=None)
+        app.config["SESSION_COOKIE_SECURE"] = False
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+    app.config["SESSION_COOKIE_DOMAIN"] = None
+    app.config["SESSION_COOKIE_PATH"] = "/"
+
+    print("\n--- SESSION CONFIG ---")
+    print("Secure:", app.config["SESSION_COOKIE_SECURE"])
+    print("SameSite:", app.config["SESSION_COOKIE_SAMESITE"])
+    print("HttpOnly:", app.config["SESSION_COOKIE_HTTPONLY"])
+    print("Development:", is_development)
+    print("-----------------------\n")
+
+    # -------------------------------------------------
+    # CORS CONFIG
+    # -------------------------------------------------
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "https://gst-sable.vercel.app",
+        "https://gst-frontend-bay.vercel.app",
     ]
     
-    # Merge and deduplicate origins
-    all_origins = list(set(cors_origins + vercel_origins))
-    
-    # In production, use configured origins; in development, allow all
-    is_production = app.config.get('FLASK_ENV') == 'production'
-    
-    # Log CORS configuration for debugging
-    print(f"CORS Configuration:")
-    print(f"  Environment: {app.config.get('FLASK_ENV', 'unknown')}")
-    print(f"  Is Production: {is_production}")
-    print(f"  CORS_ORIGINS from config: {cors_origins}")
-    print(f"  All allowed origins: {all_origins}")
-    
-    # CRITICAL: Cannot use wildcard origins with credentials=True
-    # Must use explicit origins list when supports_credentials=True
-    # Add localhost origins for development
-    resources_origins = all_origins.copy()
-    if not is_production:
-        # Add localhost origins for development
-        localhost_origins = ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000']
-        resources_origins = list(set(resources_origins + localhost_origins))
-    
-    # Enable CORS with explicit origins (NO wildcard when credentials=True)
-    CORS(app, 
-         resources={
-             r"/api/*": {
-                 "origins": resources_origins,  # Explicit list, no wildcard
-                 "supports_credentials": True,  # CRITICAL: Must be True for cookies
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-                 "allow_headers": ["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"],
-                 "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
-                 "max_age": 86400
-             }
-         },
-         # Also apply CORS globally as fallback (explicit origins, no wildcard)
-         origins=resources_origins,  # Explicit list, no wildcard
-         supports_credentials=True,  # CRITICAL: Must be True for cookies
-         allow_headers=["Content-Type", "Authorization", "Origin", "Accept", "X-Requested-With"]
+    # Add any Vercel domain pattern matching
+    # Allow all *.vercel.app domains
+    vercel_pattern_origins = allowed_origins.copy()
+
+    CORS(
+        app,
+        resources={r"/api/*": {
+            "origins": allowed_origins,
+            "supports_credentials": True,
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"],
+            "expose_headers": ["Set-Cookie", "Content-Type", "Authorization"],
+        }},
+        supports_credentials=True,
+        origins=allowed_origins,
     )
-    
-    # Initialize MongoDB connection
-    try:
-        from database import init_app as init_db, get_db
-        db = init_db(app)
-        print("MongoDB initialized")
-        
-        # CRITICAL: Set up custom MongoDB session interface AFTER config is set
-        # The session interface will read from app.config, so config must be set first
-        from mongodb_session import MongoDBSessionInterface
-        app.session_interface = MongoDBSessionInterface(
-            db=get_db(),
-            collection='sessions',
-            key_prefix='session:'
-        )
-        print("MongoDB session interface initialized - sessions stored in MongoDB")
-        
-        # Verify config is still correct after session interface initialization
-        print(f"Session Cookie Configuration (AFTER session interface):")
-        print(f"  Name: {app.config['SESSION_COOKIE_NAME']}")
-        print(f"  Secure: {app.config['SESSION_COOKIE_SECURE']}")
-        print(f"  SameSite: {app.config['SESSION_COOKIE_SAMESITE']}")
-        print(f"  HttpOnly: {app.config['SESSION_COOKIE_HTTPONLY']}")
-    except Exception as e:
-        # Log error but don't fail app startup - health check should still work
-        import logging
-        import traceback
-        logging.warning(f"MongoDB initialization warning: {e}")
-        # Print to stdout for container logs
-        print(f"WARNING: MongoDB initialization issue (app will continue): {e}")
-        traceback.print_exc()
-        # Fall back to default Flask sessions if MongoDB fails
-        print("Falling back to default Flask cookie sessions")
-    
-    # Initialize login manager
-    login_manager = LoginManager()
-    login_manager.init_app(app)
-    login_manager.login_view = None  # Disable redirect for API routes
-    
-    @login_manager.user_loader
-    def load_user(user_id):
-        # Try to load super admin first, then admin user, then customer
-        from models import SuperAdmin
-        super_admin = SuperAdmin.find_by_id(user_id)
-        if super_admin:
-            return super_admin
-        
-        user = User.find_by_id(user_id)
-        if user:
-            return user
-        
-        from models import Customer
-        customer = Customer.find_by_id(user_id)
-        return customer
-    
-    # Handle CORS preflight requests globally - MUST run first
-    @app.before_request
-    def handle_cors_preflight():
-        # Always handle OPTIONS requests first
-        if request.method == 'OPTIONS':
-            response = make_response('', 200)
-            origin = request.headers.get('Origin')
-            
-            if origin:
-                # Get allowed origins
-                cors_origins = app.config.get('CORS_ORIGINS', [])
-                if isinstance(cors_origins, str):
-                    cors_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
-                elif not isinstance(cors_origins, list):
-                    cors_origins = []
-                
-                # Always allow Vercel origins (pattern match for all *.vercel.app)
-                vercel_origins = [
-                    'https://gst-sable.vercel.app',
-                    'https://gst-frontend-bay.vercel.app'
-                ]
-                all_allowed = list(set(cors_origins + vercel_origins))
-                
-                is_production = app.config.get('FLASK_ENV') == 'production'
-                
-                # ALWAYS allow Vercel origins (any *.vercel.app domain), or if in development, or if in allowed list
-                is_vercel = origin.endswith('.vercel.app') or any(origin.startswith(v.replace('https://', '').split('.')[0]) for v in vercel_origins)
-                should_allow = not is_production or origin in all_allowed or is_vercel or origin.endswith('.vercel.app')
-                
-                if should_allow:
-                    # CRITICAL: Set CORS headers with credentials support
-                    response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be 'true' string
-                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-                    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
-                    response.headers['Access-Control-Max-Age'] = '86400'
-                    response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
-                    print(f"CORS preflight allowed for origin: {origin}")
-                else:
-                    print(f"CORS preflight blocked: Origin {origin} not in allowed list: {all_allowed}")
-            else:
-                # No origin header, but still set credentials header
-                response.headers['Access-Control-Allow-Credentials'] = 'true'
-            
-            return response
-    
-    # Add CORS headers to all responses - ensures headers are always present
+
+    # CRITICAL: Add after_request hook to ensure CORS headers are always set
+    # This handles dynamic origins (like any *.vercel.app domain)
     @app.after_request
     def after_request(response):
         origin = request.headers.get('Origin')
-        
-        # CRITICAL: Always set CORS headers if there's an origin header
         if origin:
-            # Always allow Vercel origins (critical for deployment)
-            # Pattern match: allow ANY *.vercel.app domain
-            vercel_origins = [
-                'https://gst-sable.vercel.app',
-                'https://gst-frontend-bay.vercel.app'
-            ]
-            is_vercel = origin.endswith('.vercel.app') or origin in vercel_origins
+            # Allow Vercel domains (any *.vercel.app)
+            is_vercel = origin.endswith('.vercel.app')
+            is_allowed = origin in allowed_origins or is_vercel or not is_production
             
-            # Get allowed origins from config
-            cors_origins = app.config.get('CORS_ORIGINS', [])
-            if isinstance(cors_origins, str):
-                cors_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
-            elif not isinstance(cors_origins, list):
-                cors_origins = []
-            
-            all_allowed = list(set(cors_origins + vercel_origins))
-            
-            is_production = app.config.get('FLASK_ENV') == 'production'
-            
-            # ALWAYS allow Vercel origins (any *.vercel.app domain), or if in development, or if in allowed list
-            should_allow = not is_production or origin in all_allowed or is_vercel or origin.endswith('.vercel.app')
-            
-            if should_allow:
-                # CRITICAL: Always set CORS headers with credentials support
-                # Override any existing headers to ensure they're set
+            if is_allowed:
                 response.headers['Access-Control-Allow-Origin'] = origin
-                response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be 'true' string, not boolean
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
-                # Expose Set-Cookie header so frontend can see it (though browser handles it automatically)
-                response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
-                
-                # Debug logging
-                print(f"[CORS] Set headers for origin: {origin}")
-                print(f"[CORS] Access-Control-Allow-Origin: {response.headers.get('Access-Control-Allow-Origin')}")
-                print(f"[CORS] Access-Control-Allow-Credentials: {response.headers.get('Access-Control-Allow-Credentials')}")
-            else:
-                print(f"[CORS] Blocked origin: {origin} (not in allowed list: {all_allowed})")
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Content-Type, Authorization'
         else:
-            # Even if no origin, set credentials header for same-origin requests
             response.headers['Access-Control-Allow-Credentials'] = 'true'
-            print(f"[CORS] No origin header, set credentials for same-origin")
-        
-        # CRITICAL: Ensure session cookie is set with correct attributes for cross-origin
-        # Flask should set this automatically, but we verify and fix if needed
-        if 'Set-Cookie' in response.headers:
-            cookie_header = response.headers.get('Set-Cookie', '')
-            # Check if cookie has SameSite=None and Secure flags
-            if 'session_id=' in cookie_header or 'session=' in cookie_header:
-                # If SameSite is missing or wrong, we need to fix it
-                # But Flask-Session handles this via config, so we just log
-                print(f"Session cookie being set: {cookie_header[:150]}...")
-                # Verify SameSite=None is present
-                if 'SameSite=None' not in cookie_header and 'SameSite=none' not in cookie_header:
-                    print("WARNING: Session cookie missing SameSite=None attribute!")
-                if 'Secure' not in cookie_header:
-                    print("WARNING: Session cookie missing Secure attribute!")
-        
         return response
 
-    # Health check endpoint - register early before catch-all routes
-    @app.route('/health')
+    # Handle CORS preflight
+    @app.before_request
+    def handle_cors_preflight():
+        if request.method == 'OPTIONS':
+            origin = request.headers.get('Origin')
+            response = make_response('', 200)
+            if origin:
+                is_vercel = origin.endswith('.vercel.app')
+                is_allowed = origin in allowed_origins or is_vercel or not is_production
+                if is_allowed:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+                    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
+                    response.headers['Access-Control-Max-Age'] = '86400'
+            return response
+
+    # -------------------------------------------------
+    # DATABASE + MONGO SESSION STORAGE
+    # -------------------------------------------------
+    try:
+        db = init_db(app)
+        print("MongoDB connected successfully")
+
+        from mongodb_session import MongoDBSessionInterface
+        app.session_interface = MongoDBSessionInterface(
+            db=get_db(),
+            collection="sessions",
+            key_prefix="session:"
+        )
+        print("MongoDB session storage enabled")
+
+    except Exception as e:
+        print("⚠ MongoDB session FAILED, using fallback cookies:", e)
+        import traceback
+        traceback.print_exc()
+
+    # -------------------------------------------------
+    # LOGIN MANAGER
+    # -------------------------------------------------
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = None  # prevent redirect loops
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        from models import SuperAdmin, Customer
+        return (
+            SuperAdmin.find_by_id(user_id)
+            or User.find_by_id(user_id)
+            or Customer.find_by_id(user_id)
+        )
+
+    # -------------------------------------------------
+    # REGISTER BLUEPRINTS
+    # -------------------------------------------------
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(customer_bp, url_prefix="/api/customers")
+    app.register_blueprint(product_bp, url_prefix="/api/products")
+    app.register_blueprint(invoice_bp, url_prefix="/api/invoices")
+    app.register_blueprint(gst_bp, url_prefix="/api/gst")
+    app.register_blueprint(report_bp, url_prefix="/api/reports")
+    app.register_blueprint(customer_auth_bp, url_prefix="/api/customer-auth")
+    app.register_blueprint(super_admin_bp, url_prefix="/api/super-admin")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(import_export_bp, url_prefix="/api")
+
+    # -------------------------------------------------
+    # HEALTH CHECK
+    # -------------------------------------------------
+    @app.route("/health")
     def health():
-        """Health check endpoint for Railway/deployment"""
-        return jsonify({'status': 'healthy', 'message': 'GST Billing System API is running'}), 200
-    
-    # CORS test endpoint
-    @app.route('/api/cors-test', methods=['GET', 'OPTIONS'])
-    def cors_test():
-        """Test endpoint to verify CORS is working"""
-        return jsonify({
-            'status': 'success',
-            'message': 'CORS is working correctly',
-            'origin': request.headers.get('Origin', 'No origin header')
-        }), 200
-    
-    # Register blueprints
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
-    app.register_blueprint(customer_bp, url_prefix='/api/customers')
-    app.register_blueprint(product_bp, url_prefix='/api/products')
-    app.register_blueprint(invoice_bp, url_prefix='/api/invoices')
-    app.register_blueprint(gst_bp, url_prefix='/api/gst')
-    app.register_blueprint(report_bp, url_prefix='/api/reports')
-    app.register_blueprint(customer_auth_bp, url_prefix='/api/customer-auth')
-    app.register_blueprint(super_admin_bp, url_prefix='/api/super-admin')
-    app.register_blueprint(admin_bp, url_prefix='/api/admin')
-    app.register_blueprint(import_export_bp, url_prefix='/api')
-    
-    # PDF Generation endpoint
-    @app.route('/api/generate-pdf', methods=['POST'])
-    def generate_pdf():
-        try:
-            data = request.get_json()
-            
-            # Create PDF
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            elements = []
-            
-            # Styles
-            styles = getSampleStyleSheet()
-            title_style = ParagraphStyle(
-                'CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                spaceAfter=30,
-                alignment=1  # Center alignment
-            )
-            
-            # Business Header
-            business_name = data.get('business_name', '')
-            business_address = data.get('business_address', '')
-            business_phone = data.get('business_phone', '')
-            
-            elements.append(Paragraph(business_name, title_style))
-            if business_address:
-                elements.append(Paragraph(business_address, styles['Normal']))
-            if business_phone:
-                elements.append(Paragraph(f"Phone: {business_phone}", styles['Normal']))
-            
-            elements.append(Spacer(1, 20))
-            
-            # Invoice Details
-            invoice_number = data.get('invoice_number', '')
-            invoice_date = data.get('invoice_date', '')
-            customer_name = data.get('customer_name', '')
-            customer_address = data.get('customer_address', '')
-            customer_phone = data.get('customer_phone', '')
-            
-            invoice_info = [
-                ['Invoice Number:', invoice_number],
-                ['Date:', invoice_date],
-                ['Customer:', customer_name],
-                ['Address:', customer_address],
-                ['Phone:', customer_phone]
-            ]
-            
-            invoice_table = Table(invoice_info, colWidths=[2*inch, 4*inch])
-            invoice_table.setStyle(TableStyle([
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ]))
-            elements.append(invoice_table)
-            elements.append(Spacer(1, 20))
-            
-            # Items Table
-            items = data.get('items', [])
-            if items:
-                # Table headers
-                table_data = [['S.No', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total']]
-                
-                # Add items
-                for i, item in enumerate(items, 1):
-                    product = item.get('product', {})
-                    table_data.append([
-                        str(i),
-                        product.get('name', ''),
-                        product.get('description', ''),
-                        str(item.get('quantity', 0)),
-                        f"₹{item.get('unit_price', 0):.2f}",
-                        f"₹{item.get('total', 0):.2f}"
-                    ])
-                
-                # Add total row
-                total_amount = data.get('total_amount', 0)
-                table_data.append(['', '', '', '', 'Total:', f"₹{total_amount:.2f}"])
-                
-                # Create table
-                items_table = Table(table_data, colWidths=[0.5*inch, 1.5*inch, 2*inch, 0.8*inch, 1*inch, 1*inch])
-                items_table.setStyle(TableStyle([
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),  # Header row
-                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),  # Total row
-                    ('FONTSIZE', (0, 0), (-1, -1), 9),
-                    ('GRID', (0, 0), (-1, -2), 1, colors.black),
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ]))
-                elements.append(items_table)
-            
-            # Custom columns if any
-            custom_columns = data.get('custom_columns', {})
-            if custom_columns:
-                elements.append(Spacer(1, 20))
-                elements.append(Paragraph("Additional Information:", styles['Heading2']))
-                
-                custom_data = [[key, value] for key, value in custom_columns.items()]
-                custom_table = Table(custom_data, colWidths=[2*inch, 4*inch])
-                custom_table.setStyle(TableStyle([
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 10),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ]))
-                elements.append(custom_table)
-            
-            # Notes
-            notes = data.get('notes', '')
-            if notes:
-                elements.append(Spacer(1, 20))
-                elements.append(Paragraph("Notes:", styles['Heading2']))
-                elements.append(Paragraph(notes, styles['Normal']))
-            
-            # Build PDF
-            doc.build(elements)
-            buffer.seek(0)
-            
-            return send_file(
-                buffer,
-                as_attachment=True,
-                download_name=f"invoice_{invoice_number}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                mimetype='application/pdf'
-            )
-            
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-    
-    # Serve React app (only for production)
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
+        return jsonify({"status": "healthy"}), 200
+
+    # -------------------------------------------------
+    # FRONTEND SERVING (PRODUCTION)
+    # -------------------------------------------------
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
     def serve(path):
-        # Skip API routes and health endpoint
-        if path.startswith('api/'):
-            return jsonify({'error': 'API route not found'}), 404
-        
-        # Skip health endpoint (already handled above)
-        if path == 'health':
-            return jsonify({'status': 'healthy', 'message': 'GST Billing System API is running'}), 200
-            
-        if path != "" and os.path.exists(app.static_folder + '/' + path):
+        if path.startswith("api/"):
+            return jsonify({"error": "Invalid API route"}), 404
+
+        file_path = os.path.join(app.static_folder, path)
+
+        if path != "" and os.path.exists(file_path):
             return send_from_directory(app.static_folder, path)
-        else:
-            return send_from_directory(app.static_folder, 'index.html')
-    
+
+        # fallback → index.html
+        return send_from_directory(app.static_folder, "index.html")
+
     return app
 
-if __name__ == '__main__':
-    config_name = os.environ.get('FLASK_ENV', 'development')
-    app = create_app(config_name)
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=(config_name == 'development'), host='0.0.0.0', port=port)
+
+# -------------------------------------------------
+# RUN APP (DEV MODE)
+# -------------------------------------------------
+if __name__ == "__main__":
+    env = os.environ.get("FLASK_ENV", "development")
+    app = create_app(env)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=(env == "development"), host="0.0.0.0", port=port)
