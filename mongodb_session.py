@@ -136,14 +136,11 @@ class MongoDBSessionInterface(SessionInterface):
                     samesite = config_samesite
             
             # Set cookie with session ID - CRITICAL for cross-origin
-            # Convert expires datetime to timestamp for cookie
-            from datetime import datetime
-            expires_timestamp = expires
-            
+            # expires is already a datetime object, Flask's set_cookie accepts it directly
             response.set_cookie(
                 cookie_name,
                 sid,
-                expires=expires_timestamp,
+                expires=expires,  # Flask accepts datetime objects directly
                 httponly=True,  # Always HttpOnly for security
                 domain=domain,  # None for cross-origin
                 path=path,  # '/' for root path
