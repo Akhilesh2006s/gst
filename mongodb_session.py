@@ -40,8 +40,13 @@ class MongoDBSessionInterface(SessionInterface):
         """Load session from MongoDB"""
         cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
         sid = request.cookies.get(cookie_name)
+        
+        # Debug: Log cookie received
+        print(f"[SESSION] Opening session - Cookie name: {cookie_name}, SID from cookie: {sid}")
+        
         if not sid:
             sid = self._generate_sid()
+            print(f"[SESSION] No cookie found, generating new SID: {sid}")
             return MongoDBSession(sid=sid, permanent=True)
         
         # Remove key prefix if present
@@ -58,12 +63,16 @@ class MongoDBSessionInterface(SessionInterface):
             if session_doc:
                 # Unpickle session data
                 data = pickle.loads(session_doc['data'])
+                print(f"[SESSION] Loaded session from MongoDB - SID: {sid}, Keys: {list(data.keys())}")
                 return MongoDBSession(data, sid=sid, permanent=True)
             else:
                 # Session expired or not found
+                print(f"[SESSION] Session not found or expired in MongoDB - SID: {sid}")
                 return MongoDBSession(sid=sid, permanent=True)
         except Exception as e:
-            print(f"Error loading session from MongoDB: {e}")
+            print(f"[SESSION] Error loading session from MongoDB: {e}")
+            import traceback
+            traceback.print_exc()
             return MongoDBSession(sid=sid, permanent=self.permanent)
     
     def save_session(self, app, session, response):

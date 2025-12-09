@@ -252,16 +252,27 @@ def check_auth():
     """Check if user is authenticated and return user type"""
     try:
         # Debug: Log session and user info
-        from flask import session as flask_session
-        print(f"Auth check - Session keys: {list(flask_session.keys())}")
-        print(f"Auth check - Current user type: {type(current_user)}")
-        print(f"Auth check - Current user ID: {getattr(current_user, 'id', None)}")
-        print(f"Auth check - Is authenticated attr: {hasattr(current_user, 'is_authenticated')}")
+        from flask import session as flask_session, request as flask_request
+        cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
+        cookie_value = flask_request.cookies.get(cookie_name)
+        
+        print(f"[AUTH CHECK] Cookie received: {cookie_name}={cookie_value}")
+        print(f"[AUTH CHECK] Session keys: {list(flask_session.keys())}")
+        print(f"[AUTH CHECK] Session data: {dict(flask_session)}")
+        print(f"[AUTH CHECK] Current user type: {type(current_user)}")
+        print(f"[AUTH CHECK] Current user ID: {getattr(current_user, 'id', None)}")
+        print(f"[AUTH CHECK] Is authenticated attr: {hasattr(current_user, 'is_authenticated')}")
+        
+        # Check Flask-Login's internal session key
+        # Flask-Login stores user ID under '_user_id' or '_id' key
+        flask_login_key = '_user_id'
+        if flask_login_key in flask_session:
+            print(f"[AUTH CHECK] Flask-Login user ID in session: {flask_session[flask_login_key]}")
         
         # Check if user is authenticated - this should work even if session is just created
         # Use getattr to safely check authentication status
         is_authenticated = getattr(current_user, 'is_authenticated', False) if hasattr(current_user, 'is_authenticated') else False
-        print(f"Auth check - Is authenticated: {is_authenticated}")
+        print(f"[AUTH CHECK] Is authenticated: {is_authenticated}")
         
         if is_authenticated:
             # Determine user type by checking model attributes
