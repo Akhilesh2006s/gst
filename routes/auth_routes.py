@@ -256,7 +256,14 @@ def check_auth():
         cookie_name = current_app.config.get('SESSION_COOKIE_NAME', 'session_id')
         cookie_value = flask_request.cookies.get(cookie_name)
         
-        print(f"[AUTH CHECK] Cookie received: {cookie_name}={cookie_value}")
+        # Log ALL cookies received
+        all_cookies = dict(flask_request.cookies)
+        print(f"[AUTH CHECK] ========== AUTH CHECK REQUEST ==========")
+        print(f"[AUTH CHECK] All cookies received: {all_cookies}")
+        print(f"[AUTH CHECK] Cookie name looking for: {cookie_name}")
+        print(f"[AUTH CHECK] Cookie value: {cookie_value}")
+        print(f"[AUTH CHECK] Request origin: {flask_request.headers.get('Origin')}")
+        print(f"[AUTH CHECK] Request headers: {dict(flask_request.headers)}")
         print(f"[AUTH CHECK] Session keys: {list(flask_session.keys())}")
         print(f"[AUTH CHECK] Session data: {dict(flask_session)}")
         print(f"[AUTH CHECK] Current user type: {type(current_user)}")
@@ -273,6 +280,7 @@ def check_auth():
         # Use getattr to safely check authentication status
         is_authenticated = getattr(current_user, 'is_authenticated', False) if hasattr(current_user, 'is_authenticated') else False
         print(f"[AUTH CHECK] Is authenticated: {is_authenticated}")
+        print(f"[AUTH CHECK] =========================================")
         
         if is_authenticated:
             # Determine user type by checking model attributes

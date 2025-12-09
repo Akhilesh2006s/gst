@@ -30,8 +30,20 @@ def create_app(config_name='development'):
     # -------------------------------------------------
     # SESSION COOKIE CONFIG (IMPORTANT)
     # -------------------------------------------------
-    is_development = config_name == 'development' or app.config.get('FLASK_ENV') == 'development'
+    # Check if we're in production (Railway) or development
+    # Railway sets FLASK_ENV=production or we can check for Railway-specific env vars
+    is_development = (
+        config_name == 'development' or 
+        app.config.get('FLASK_ENV') == 'development' or
+        os.environ.get('RAILWAY_ENVIRONMENT') is None  # Railway sets this
+    )
     is_production = not is_development
+    
+    # Force production mode if running on Railway (HTTPS)
+    if 'railway' in os.environ.get('RAILWAY_ENVIRONMENT', '').lower() or 'railway' in os.environ.get('HOSTNAME', '').lower():
+        is_production = True
+        is_development = False
+        print("[CONFIG] Detected Railway environment - forcing production mode")
 
     app.config["SESSION_COOKIE_NAME"] = "session_id"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
