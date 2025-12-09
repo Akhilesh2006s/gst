@@ -40,10 +40,17 @@ def create_app(config_name='development'):
     # CRITICAL: For cross-origin cookies (Vercel frontend + Railway backend)
     app.config['SESSION_COOKIE_NAME'] = 'session_id'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SECURE'] = True  # MUST be True for HTTPS (production)
-    # CRITICAL: SameSite=None is required for cross-origin cookies
-    # Flask-Session uses 'None' string, but we need to ensure it's properly set
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # String 'None' for cross-origin
+    # CRITICAL: Secure must be False for HTTP (localhost), True for HTTPS (production)
+    # Check if we're in development (localhost) or production (HTTPS)
+    is_development = config_name == 'development' or app.config.get('FLASK_ENV') == 'development'
+    # For localhost HTTP, Secure must be False. For production HTTPS, Secure must be True
+    app.config['SESSION_COOKIE_SECURE'] = not is_development  # False for localhost, True for production
+    # CRITICAL: SameSite=None is required for cross-origin cookies, but only works with Secure=True
+    # For localhost (same-origin), we can use 'Lax'. For production (cross-origin), use 'None'
+    if is_development:
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Works with Secure=False for localhost
+    else:
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin with Secure=True
     # Don't set domain - let browser handle it for cross-origin
     app.config['SESSION_COOKIE_DOMAIN'] = None
     # Set session cookie path to root

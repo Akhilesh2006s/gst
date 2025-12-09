@@ -81,73 +81,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (data.success) {
         setSuccess(data.message || 'Login successful!');
         
-        // Wait a moment for session cookie to be established
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Verify session is established before proceeding
-        let sessionVerified = false;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          try {
-            const checkEndpoint = userType === 'admin' 
-              ? `${API_BASE_URL}/auth/check`
-              : `${API_BASE_URL}/customer-auth/profile`;
-            
-            const verifyResponse = await fetch(checkEndpoint, {
-              credentials: 'include',
-              headers: {
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            // Debug: Check if cookies are being sent
-            console.log(`Verification attempt ${attempt + 1} - Response status:`, verifyResponse.status);
-            console.log(`Verification attempt ${attempt + 1} - Response headers:`, {
-              'set-cookie': verifyResponse.headers.get('Set-Cookie'),
-              'access-control-allow-credentials': verifyResponse.headers.get('Access-Control-Allow-Credentials')
-            });
-            
-            const verifyData = await verifyResponse.json().catch(() => ({ authenticated: false }));
-            console.log(`Session verification attempt ${attempt + 1}:`, verifyData);
-            
-            // Check for authenticated flag in response
-            if (verifyResponse.ok && (verifyData.authenticated === true || verifyData.success === true)) {
-              sessionVerified = true;
-              console.log('Session verified successfully!');
-              break;
-            } else {
-              console.log(`Session not verified yet, attempt ${attempt + 1}/5`);
-              // Wait before retry (longer wait for later attempts)
-              await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
-            }
-          } catch (error) {
-            console.error(`Session verification attempt ${attempt + 1} failed:`, error);
-            await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
+        // Proceed directly with login - no verification needed
+        onLogin(userType);
+        setTimeout(() => {
+          if (userType === 'admin') {
+            navigate('/dashboard');
+          } else {
+            navigate('/customer-dashboard');
           }
-        }
-        
-        if (sessionVerified) {
-          // Session is established, proceed with login
-          onLogin(userType);
-          setTimeout(() => {
-            if (userType === 'admin') {
-              navigate('/dashboard');
-            } else {
-              navigate('/customer-dashboard');
-            }
-          }, 100);
-        } else {
-          console.error('Session verification failed after multiple attempts');
-          // Still proceed with login - session might work anyway
-          console.warn('Proceeding with login despite verification failure - session may still work');
-          onLogin(userType);
-          setTimeout(() => {
-            if (userType === 'admin') {
-              navigate('/dashboard');
-            } else {
-              navigate('/customer-dashboard');
-            }
-          }, 100);
-        }
+        }, 100);
       } else {
         setError(data.message || 'Login failed');
       }

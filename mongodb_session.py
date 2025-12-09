@@ -136,7 +136,12 @@ class MongoDBSessionInterface(SessionInterface):
                     samesite = config_samesite
             
             # Set cookie with session ID - CRITICAL for cross-origin
-            # expires is already a datetime object, Flask's set_cookie accepts it directly
+            # Get secure and samesite from app config (respects development vs production)
+            secure = app.config.get('SESSION_COOKIE_SECURE', False)
+            samesite_config = app.config.get('SESSION_COOKIE_SAMESITE', 'Lax')
+            # Convert 'None' string to Python None, 'Lax'/'Strict' stay as strings
+            samesite = None if samesite_config == 'None' else samesite_config
+            
             response.set_cookie(
                 cookie_name,
                 sid,
@@ -144,8 +149,8 @@ class MongoDBSessionInterface(SessionInterface):
                 httponly=True,  # Always HttpOnly for security
                 domain=domain,  # None for cross-origin
                 path=path,  # '/' for root path
-                secure=True,  # MUST be True for cross-origin cookies (HTTPS required)
-                samesite=None  # Python None = SameSite=None for cross-origin
+                secure=secure,  # False for HTTP (localhost), True for HTTPS (production)
+                samesite=samesite  # 'Lax' for localhost, None for cross-origin production
             )
             
             # Log cookie being set for debugging
