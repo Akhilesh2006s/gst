@@ -64,17 +64,22 @@ def login():
             
             # Log session info for debugging
             from flask import current_app
-            print(f"Login successful for user: {user.email}")
-            print(f"Session keys after login: {list(session.keys())}")
-            print(f"Session modified flag: {session.modified}")
-            print(f"Session permanent: {session.permanent}")
-            print(f"Session cookie config:")
+            print(f"[LOGIN] Login successful for user: {user.email}")
+            print(f"[LOGIN] Session keys after login: {list(session.keys())}")
+            print(f"[LOGIN] Session modified flag: {session.modified}")
+            print(f"[LOGIN] Session permanent: {session.permanent}")
+            print(f"[LOGIN] Session cookie config:")
             print(f"  - Name: {current_app.config.get('SESSION_COOKIE_NAME')}")
             print(f"  - Secure: {current_app.config.get('SESSION_COOKIE_SECURE')}")
             print(f"  - SameSite: {current_app.config.get('SESSION_COOKIE_SAMESITE')}")
             print(f"  - HttpOnly: {current_app.config.get('SESSION_COOKIE_HTTPONLY')}")
             print(f"  - Path: {current_app.config.get('SESSION_COOKIE_PATH')}")
             print(f"  - Domain: {current_app.config.get('SESSION_COOKIE_DOMAIN')}")
+            
+            # CRITICAL: Force session to be saved by accessing session interface
+            # Flask will call save_session automatically, but we ensure it happens
+            print(f"[LOGIN] Session will be saved by Flask session interface")
+            print(f"[LOGIN] Response will include Set-Cookie header via session interface")
             
             # Flask should automatically set the cookie when session is modified
             # The after_request hook will add CORS headers

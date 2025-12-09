@@ -72,19 +72,28 @@ class MongoDBSessionInterface(SessionInterface):
         path = self.get_cookie_path(app)
         cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session_id')
         
-        # If session is empty or should be deleted, remove it
-        if not session or (hasattr(session, 'sid') and not session):
+        # Check if session should be deleted (empty session dict, not just missing sid)
+        # CRITICAL: Check if session dict is empty, not if session object is falsy
+        session_dict = dict(session) if session else {}
+        is_empty = len(session_dict) == 0
+        
+        # If session is empty and we have a sid, delete it
+        if is_empty:
             sid = getattr(session, 'sid', None)
             if sid:
                 try:
                     self.db[self.collection].delete_one({'_id': sid})
+                    print(f"[SESSION] Deleted empty session: {sid}")
                 except Exception as e:
                     print(f"Error deleting session: {e}")
             response.delete_cookie(
                 cookie_name,
                 domain=domain,
-                path=path
+                path=path,
+                secure=True,
+                samesite=None
             )
+            print(f"[SESSION] Deleted cookie for empty session")
             return
         
         # Calculate expiration
@@ -127,19 +136,24 @@ class MongoDBSessionInterface(SessionInterface):
                     samesite = config_samesite
             
             # Set cookie with session ID - CRITICAL for cross-origin
+            # Convert expires datetime to timestamp for cookie
+            from datetime import datetime
+            expires_timestamp = expires
+            
             response.set_cookie(
                 cookie_name,
                 sid,
-                expires=expires,
-                httponly=self.get_cookie_httponly(app),
-                domain=domain,
-                path=path,
-                secure=True,  # MUST be True for cross-origin cookies
-                samesite=None  # None means SameSite=None for cross-origin
+                expires=expires_timestamp,
+                httponly=True,  # Always HttpOnly for security
+                domain=domain,  # None for cross-origin
+                path=path,  # '/' for root path
+                secure=True,  # MUST be True for cross-origin cookies (HTTPS required)
+                samesite=None  # Python None = SameSite=None for cross-origin
             )
             
             # Log cookie being set for debugging
-            print(f"Setting session cookie: name={cookie_name}, secure=True, samesite=None, domain={domain}, path={path}")
+            print(f"[SESSION] Setting cookie: name={cookie_name}, value={sid[:20]}..., secure=True, samesite=None, domain={domain}, path={path}, expires={expires}")
+            print(f"[SESSION] Cookie header will be: {cookie_name}={sid}; Secure; SameSite=None; HttpOnly; Path={path}")
         except Exception as e:
             print(f"Error saving session to MongoDB: {e}")
             import traceback

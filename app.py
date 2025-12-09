@@ -204,6 +204,8 @@ def create_app(config_name='development'):
     @app.after_request
     def after_request(response):
         origin = request.headers.get('Origin')
+        
+        # CRITICAL: Always set CORS headers if there's an origin header
         if origin:
             # Always allow Vercel origins (critical for deployment)
             # Pattern match: allow ANY *.vercel.app domain
@@ -229,15 +231,24 @@ def create_app(config_name='development'):
             
             if should_allow:
                 # CRITICAL: Always set CORS headers with credentials support
+                # Override any existing headers to ensure they're set
                 response.headers['Access-Control-Allow-Origin'] = origin
                 response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be 'true' string, not boolean
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Origin, Accept, X-Requested-With'
                 # Expose Set-Cookie header so frontend can see it (though browser handles it automatically)
                 response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
+                
+                # Debug logging
+                print(f"[CORS] Set headers for origin: {origin}")
+                print(f"[CORS] Access-Control-Allow-Origin: {response.headers.get('Access-Control-Allow-Origin')}")
+                print(f"[CORS] Access-Control-Allow-Credentials: {response.headers.get('Access-Control-Allow-Credentials')}")
+            else:
+                print(f"[CORS] Blocked origin: {origin} (not in allowed list: {all_allowed})")
         else:
             # Even if no origin, set credentials header for same-origin requests
             response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS] No origin header, set credentials for same-origin")
         
         # CRITICAL: Ensure session cookie is set with correct attributes for cross-origin
         # Flask should set this automatically, but we verify and fix if needed
