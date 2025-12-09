@@ -51,12 +51,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',  // CRITICAL: Must include credentials to send/receive cookies
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
           remember_me: true
-        }),
-        credentials: 'include'
+        })
       });
 
       // Debug: Check response headers for Set-Cookie
@@ -151,8 +151,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
-        credentials: 'include'
+        credentials: 'include',  // CRITICAL: Must include credentials to send/receive cookies
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {

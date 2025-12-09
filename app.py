@@ -26,7 +26,7 @@ from routes.import_export_routes import import_export_bp
 def create_app(config_name='development'):
     app = Flask(__name__, static_folder='frontend/dist', template_folder='frontend/dist')
     app.config.from_object(config[config_name])
-
+    
     # -------------------------------------------------
     # SESSION COOKIE CONFIG (IMPORTANT)
     # -------------------------------------------------
@@ -72,37 +72,53 @@ def create_app(config_name='development'):
     # Allow all *.vercel.app domains
     vercel_pattern_origins = allowed_origins.copy()
 
+    # Initialize CORS - we'll handle dynamic origins in after_request hook
+    # Note: Can't use "*" with credentials, so we use a function to check origins
     CORS(
         app,
         resources={r"/api/*": {
-            "origins": allowed_origins,
+            "origins": allowed_origins,  # Base list, extended in after_request
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Origin", "Accept"],
             "expose_headers": ["Set-Cookie", "Content-Type", "Authorization"],
         }},
         supports_credentials=True,
-        origins=allowed_origins,
     )
 
-    # CRITICAL: Add after_request hook to ensure CORS headers are always set
+    # CRITICAL: Add after_request hook to ensure CORS headers are ALWAYS set
     # This handles dynamic origins (like any *.vercel.app domain)
     @app.after_request
     def after_request(response):
         origin = request.headers.get('Origin')
+        
+        # Determine if origin is allowed
         if origin:
             # Allow Vercel domains (any *.vercel.app)
             is_vercel = origin.endswith('.vercel.app')
             is_allowed = origin in allowed_origins or is_vercel or not is_production
             
             if is_allowed:
+                # CRITICAL: Always set these headers (override any existing)
                 response.headers['Access-Control-Allow-Origin'] = origin
-                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be string 'true'
                 response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                 response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
                 response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Content-Type, Authorization'
+                print(f"[CORS] Set headers for origin: {origin}, credentials: true")
+            else:
+                # Origin not allowed, but still set credentials for debugging
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                print(f"[CORS] WARNING: Origin not allowed: {origin}")
         else:
+            # Even without origin, ALWAYS set credentials header
             response.headers['Access-Control-Allow-Credentials'] = 'true'
+            print(f"[CORS] No origin header, set credentials: true")
+        
+        # CRITICAL: Ensure credentials header is ALWAYS present (even if origin check fails)
+        if 'Access-Control-Allow-Credentials' not in response.headers:
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+        
         return response
 
     # Handle CORS preflight
@@ -115,11 +131,16 @@ def create_app(config_name='development'):
                 is_vercel = origin.endswith('.vercel.app')
                 is_allowed = origin in allowed_origins or is_vercel or not is_production
                 if is_allowed:
+                    # CRITICAL: Set CORS headers for preflight
                     response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'  # MUST be string 'true'
                     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
                     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Origin, Accept'
                     response.headers['Access-Control-Max-Age'] = '86400'
+                    print(f"[CORS] Preflight allowed for origin: {origin}")
+            else:
+                # Even without origin, set credentials
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
             return response
 
     # -------------------------------------------------
@@ -128,7 +149,7 @@ def create_app(config_name='development'):
     try:
         db = init_db(app)
         print("MongoDB connected successfully")
-
+        
         from mongodb_session import MongoDBSessionInterface
         app.session_interface = MongoDBSessionInterface(
             db=get_db(),
@@ -141,14 +162,14 @@ def create_app(config_name='development'):
         print("⚠ MongoDB session FAILED, using fallback cookies:", e)
         import traceback
         traceback.print_exc()
-
+    
     # -------------------------------------------------
     # LOGIN MANAGER
     # -------------------------------------------------
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.login_view = None  # prevent redirect loops
-
+    
     @login_manager.user_loader
     def load_user(user_id):
         from models import SuperAdmin, Customer
@@ -188,15 +209,15 @@ def create_app(config_name='development'):
     def serve(path):
         if path.startswith("api/"):
             return jsonify({"error": "Invalid API route"}), 404
-
+        
         file_path = os.path.join(app.static_folder, path)
-
+            
         if path != "" and os.path.exists(file_path):
             return send_from_directory(app.static_folder, path)
 
         # fallback → index.html
         return send_from_directory(app.static_folder, "index.html")
-
+    
     return app
 
 
